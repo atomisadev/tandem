@@ -1,0 +1,26 @@
+{
+  "name": "@tandem/api",
+  "version": "0.0.0",
+  "module": "src/index.ts",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "dev": "bun run --watch src/index.ts",
+    "build": "bun build src/index.ts --outdir dist --target bun"
+  },
+  "dependencies": {
+    "@elysiajs/cors": "latest",
+    "@prisma/client": "5",
+    "better-auth": "^1.4.10",
+    "elysia": "latest"
+  },
+  "devDependencies": {
+    "bun-types": "latest",
+    "prisma": "5"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  },
+  "main": "src/index.ts",
+  "types": "src/index.ts"
+}
