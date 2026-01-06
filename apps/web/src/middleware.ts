@@ -6,9 +6,17 @@ export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   const authRoutes = ["/sign-in", "/sign-up", "/"];
+  const protectedRoutes = ["/dashboard"];
 
   if (sessionToken && authRoutes.includes(pathname)) {
     return NextResponse.redirect(new URL("/dashboard", request.url));
+  }
+
+  if (
+    !sessionToken &&
+    protectedRoutes.some((route) => pathname.startsWith(route))
+  ) {
+    return NextResponse.redirect(new URL("/sign-in", request.url));
   }
 
   return NextResponse.next();

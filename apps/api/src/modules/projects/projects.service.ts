@@ -3,7 +3,7 @@ import { prisma } from "../../common/db";
 export class ProjectsService {
   static async createProject(
     userId: string,
-    data: { title: string; description?: string },
+    data: { title: string; description?: string }
   ) {
     return prisma.project.create({
       data: {
