@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -14,7 +14,16 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Plus, Github, Loader2, Lock, Globe, Slash } from "lucide-react";
+import {
+  Plus,
+  Github,
+  Loader2,
+  Lock,
+  LockOpen,
+  Slash,
+  ChevronsUpDown,
+  Check,
+} from "lucide-react";
 import {
   Select,
   SelectContent,
@@ -22,6 +31,19 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
@@ -29,6 +51,7 @@ import {
   useGithubRepos,
   type Repo,
 } from "../_hooks/use-github";
+import { cn } from "@/lib/utils";
 
 interface CreateProjectDialogProps {
   onCreate: (project: {
@@ -36,9 +59,10 @@ interface CreateProjectDialogProps {
     description: string;
     githubRepoId: string;
     githubRepoName: string;
-  }) => Promise<void>;
+  }) => void;
   isCreating: boolean;
 }
+
 export function CreateProjectDialog({
   onCreate,
   isCreating,
@@ -46,11 +70,12 @@ export function CreateProjectDialog({
   const [open, setOpen] = useState(false);
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
-  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const [selectedOwner, setSelectedOwner] = useState<string>("");
   const [selectedRepoId, setSelectedRepoId] = useState<string>("");
   const [selectedRepo, setSelectedRepo] = useState<Repo | null>(null);
+
+  const [repoOpen, setRepoOpen] = useState(false);
 
   const { data: owners, isLoading: loadingOwners } = useGithubOwners(open);
   const { data: repos, isLoading: loadingRepos } = useGithubRepos(
@@ -58,23 +83,23 @@ export function CreateProjectDialog({
     open
   );
 
-  const handleRepoChange = (repoId: string) => {
-    const repo = repos?.find((r) => r.id === repoId);
+  const handleRepoSelect = (currentValue: string) => {
+    const repo = repos?.find((r) => r.id === currentValue);
+
     if (repo) {
-      setSelectedRepoId(repoId);
+      setSelectedRepoId(currentValue);
       setSelectedRepo(repo);
       setTitle(repo.name);
       setDescription(repo.description || "");
+      setRepoOpen(false);
     }
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedRepo) return;
 
-    setIsSubmitting(true);
-
-    await onCreate({
+    onCreate({
       title,
       description,
       githubRepoId: selectedRepo.id,
@@ -82,7 +107,6 @@ export function CreateProjectDialog({
     });
     setOpen(false);
 
-    // reset form
     setTitle("");
     setDescription("");
     setSelectedRepoId("");
@@ -97,7 +121,7 @@ export function CreateProjectDialog({
           Create Project
         </Button>
       </DialogTrigger>
-      <DialogContent className="sm:max-w-[450px]">
+      <DialogContent className="sm:max-w-[550px]">
         <form onSubmit={handleSubmit}>
           <DialogHeader>
             <DialogTitle>Link Repository</DialogTitle>
@@ -121,7 +145,7 @@ export function CreateProjectDialog({
                       setSelectedRepo(null);
                     }}
                   >
-                    <SelectTrigger>
+                    <SelectTrigger className="w-full">
                       <SelectValue placeholder="Owner" />
                     </SelectTrigger>
                     <SelectContent>
@@ -147,45 +171,80 @@ export function CreateProjectDialog({
                 <Slash className="h-4 w-4 -rotate-12" />
               </div>
 
-              <div className="grid gap-2 flex-[1.5] min-w-0">
+              <div className="grid gap-2 flex-1 min-w-0">
                 <Label>Repository</Label>
                 {loadingRepos ? (
                   <div className="space-y-2">
                     <Skeleton className="h-9 w-full" />
                   </div>
                 ) : (
-                  <Select
-                    value={selectedRepoId}
-                    onValueChange={handleRepoChange}
-                    disabled={!selectedOwner}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Repository" />
-                    </SelectTrigger>
-                    <SelectContent className="max-h-[200px]">
-                      {repos?.length === 0 ? (
-                        <div className="p-2 text-xs text-muted-foreground text-center">
-                          No repositories found.
-                        </div>
-                      ) : (
-                        repos?.map((repo) => (
-                          <SelectItem key={repo.id} value={repo.id}>
-                            <div className="flex items-center gap-2 truncate">
-                              {repo.private ? (
-                                <Lock className="h-3 w-3 text-muted-foreground shrink-0" />
-                              ) : (
-                                <Globe className="h-3 w-3 text-muted-foreground shrink-0" />
-                              )}
-                              <span className="truncate">{repo.name}</span>
-                            </div>
-                          </SelectItem>
-                        ))
-                      )}
-                    </SelectContent>
-                  </Select>
+                  <Popover open={repoOpen} onOpenChange={setRepoOpen}>
+                    <PopoverTrigger asChild>
+                      <Button
+                        variant="outline"
+                        role="combobox"
+                        aria-expanded={repoOpen}
+                        disabled={!selectedOwner}
+                        className="w-full justify-between px-3 font-normal"
+                      >
+                        {selectedRepo ? (
+                          <div className="flex items-center gap-2 truncate">
+                            {selectedRepo.private ? (
+                              <Lock className="h-3 w-3 text-muted-foreground shrink-0" />
+                            ) : (
+                              <LockOpen className="h-3 w-3 text-muted-foreground shrink-0" />
+                            )}
+                            <span className="truncate">
+                              {selectedRepo.name}
+                            </span>
+                          </div>
+                        ) : (
+                          <span className="text-muted-foreground">
+                            Select repository...
+                          </span>
+                        )}
+                        <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-[250px] p-0" align="start">
+                      <Command>
+                        <CommandInput placeholder="Search repo..." />
+                        <CommandList>
+                          <CommandEmpty>No repo found.</CommandEmpty>
+                          <CommandGroup>
+                            {repos?.map((repo) => (
+                              <CommandItem
+                                key={repo.id}
+                                value={repo.name}
+                                onSelect={() => handleRepoSelect(repo.id)}
+                              >
+                                <div className="flex items-center gap-2 truncate w-full">
+                                  {repo.private ? (
+                                    <Lock className="h-3 w-3 text-muted-foreground shrink-0" />
+                                  ) : (
+                                    <LockOpen className="h-3 w-3 text-muted-foreground shrink-0" />
+                                  )}
+                                  <span className="truncate">{repo.name}</span>
+                                </div>
+                                <Check
+                                  className={cn(
+                                    "ml-auto h-4 w-4",
+                                    selectedRepoId === repo.id
+                                      ? "opacity-100"
+                                      : "opacity-0"
+                                  )}
+                                />
+                              </CommandItem>
+                            ))}
+                          </CommandGroup>
+                        </CommandList>
+                      </Command>
+                    </PopoverContent>
+                  </Popover>
                 )}
               </div>
             </div>
+
             {selectedRepo && (
               <div className="space-y-4 pt-2 border-t">
                 <div className="grid gap-2">
