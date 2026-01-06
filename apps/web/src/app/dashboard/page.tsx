@@ -11,6 +11,7 @@ import { CreateProjectDialog } from "./_components/create-project-dialog";
 import { ProjectCard } from "./_components/project-card";
 import { Loader2 } from "lucide-react";
 import { ProjectCardSkeleton } from "./_components/project-card-skeleton";
+import { toast } from "sonner";
 
 export default function DashboardPage() {
   const { data: projects, isLoading } = useProjects();
@@ -23,8 +24,13 @@ export default function DashboardPage() {
     githubRepoName: string;
   }) => {
     createProject(data, {
+      onSuccess: () => {
+        toast.success("Project created successfully");
+      },
       onError: (e) => {
-        alert("Failed to create project. " + e.message);
+        toast.error("Failed to create project", {
+          description: e.message,
+        });
       },
     });
   };

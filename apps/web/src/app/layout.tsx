@@ -3,6 +3,7 @@ import { Geist, Geist_Mono, Inter, Roboto } from "next/font/google";
 import "./globals.css";
 import { cn } from "@/lib/utils";
 import { Providers } from "@/components/providers";
+import { Toaster } from "@/components/ui/sonner";
 
 const roboto = Roboto({ subsets: ["latin"], variable: "--font-sans" });
 
@@ -35,7 +36,10 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
-        <Providers>{children}</Providers>
+        <Providers>
+          {children}
+          <Toaster />
+        </Providers>
       </body>
     </html>
   );

@@ -16,6 +16,7 @@ import { authClient } from "@/lib/auth-client";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Command, Github } from "lucide-react";
+import { toast } from "sonner";
 
 export default function SignIn() {
   const [loading, setLoading] = useState(false);
@@ -33,7 +34,7 @@ export default function SignIn() {
           router.push("/dashboard");
         },
         onError: (ctx) => {
-          alert(ctx.error.message);
+          toast.error(ctx.error.message);
           setLoading(false);
         },
       }

@@ -16,6 +16,7 @@ import { authClient } from "@/lib/auth-client";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Command } from "lucide-react";
+import { toast } from "sonner";
 
 export default function SignUp() {
   const [name, setName] = useState("");
@@ -35,12 +36,13 @@ export default function SignUp() {
       {
         onSuccess: () => {
           router.push("/dashboard");
+          toast.success("Account created successfully");
         },
         onError: (ctx) => {
-          alert(ctx.error.message);
+          toast.error(ctx.error.message);
           setLoading(false);
         },
-      },
+      }
     );
   };
 
@@ -126,5 +128,4 @@ export default function SignUp() {
       </div>
     </div>
   );
-
 }
