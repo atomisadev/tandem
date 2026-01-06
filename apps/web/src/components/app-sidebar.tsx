@@ -80,57 +80,54 @@ export function AppSidebar() {
       <SidebarFooter>
         <SidebarMenu>
           <SidebarMenuItem>
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <SidebarMenuButton
-                  size="lg"
-                  className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
-                >
-                  {isPending ? (
-                    <div className="flex items-center gap-2">
-                      <Skeleton className="h-8 w-8 rounded-full" />
-                      <div className="flex flex-col gap-1">
-                        <Skeleton className="h-3 w-20" />
-                        <Skeleton className="h-2 w-16" />
-                      </div>
+            {isPending ? (
+              <div className="flex items-center gap-2 p-2">
+                <Skeleton className="h-8 w-8 rounded-lg" />
+                <div className="flex flex-col gap-1">
+                  <Skeleton className="h-3 w-20" />
+                  <Skeleton className="h-2 w-16" />
+                </div>
+              </div>
+            ) : (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <SidebarMenuButton
+                    size="lg"
+                    className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
+                  >
+                    <Avatar className="h-8 w-8 rounded-lg">
+                      <AvatarImage
+                        src={session?.user?.image || ""}
+                        alt={session?.user?.name || ""}
+                      />
+                      <AvatarFallback className="rounded-lg">
+                        {session?.user?.name?.slice(0, 2).toUpperCase() || "CN"}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div className="grid flex-1 text-left text-sm leading-tight">
+                      <span className="truncate font-semibold">
+                        {session?.user?.name}
+                      </span>
+                      <span className="truncate text-xs">
+                        {session?.user?.email}
+                      </span>
                     </div>
-                  ) : (
-                    <>
-                      <Avatar className="h-8 w-8 rounded-lg">
-                        <AvatarImage
-                          src={session?.user?.image || ""}
-                          alt={session?.user?.name || ""}
-                        />
-                        <AvatarFallback className="rounded-lg">
-                          {session?.user?.name?.slice(0, 2).toUpperCase() ||
-                            "CN"}
-                        </AvatarFallback>
-                      </Avatar>
-                      <div className="grid flex-1 text-left text-sm leading-tight">
-                        <span className="truncate font-semibold">
-                          {session?.user?.name || "User"}
-                        </span>
-                        <span className="truncate text-xs">
-                          {session?.user?.email || "user@example.com"}
-                        </span>
-                      </div>
-                      <IconSelector className="ml-auto size-4" />
-                    </>
-                  )}
-                </SidebarMenuButton>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent
-                className="w-[--radix-dropdown-menu-trigger-width] min-w-56 rounded-lg"
-                side="bottom"
-                align="end"
-                sideOffset={4}
-              >
-                <DropdownMenuItem onClick={handleSignOut}>
-                  <IconLogout className="mr-2 h-4 w-4" />
-                  Log out
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
+                    <IconSelector className="ml-auto size-4" />
+                  </SidebarMenuButton>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent
+                  className="w-[--radix-dropdown-menu-trigger-width] min-w-56 rounded-lg"
+                  side="bottom"
+                  align="end"
+                  sideOffset={4}
+                >
+                  <DropdownMenuItem onClick={handleSignOut}>
+                    <IconLogout className="mr-2 h-4 w-4" />
+                    Log out
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
           </SidebarMenuItem>
         </SidebarMenu>
       </SidebarFooter>

@@ -6,16 +6,16 @@ export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   const authRoutes = ["/sign-in", "/sign-up", "/"];
-  const protectedRoutes = ["/dashboard"];
+  const isAuthRoute = authRoutes.includes(pathname);
+  const isRoot = pathname === "/";
 
-  if (sessionToken && authRoutes.includes(pathname)) {
+  const isProtectedRoute = pathname.startsWith("/dashboard");
+
+  if (sessionToken && (isAuthRoute || isRoot)) {
     return NextResponse.redirect(new URL("/dashboard", request.url));
   }
 
-  if (
-    !sessionToken &&
-    protectedRoutes.some((route) => pathname.startsWith(route))
-  ) {
+  if (!sessionToken && isProtectedRoute) {
     return NextResponse.redirect(new URL("/sign-in", request.url));
   }
 
@@ -23,5 +23,5 @@ export function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/", "/sign-in", "/sign-up"],
+  matcher: ["/((?!api|_next/static|_next/image|favicon.ico).*)"],
 };

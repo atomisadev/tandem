@@ -5,7 +5,6 @@ datasource db {
 
 generator client {
   provider = "prisma-client-js"
-  output   = "../../../node_modules/.prisma/client"
 }
 
 model User {
@@ -74,11 +73,15 @@ model Verification {
 }
 
 model Project {
-  id          String   @id @default(cuid())
+  id          String  @id @default(cuid())
   title       String
   description String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+
+  githubRepoId   String?
+  githubRepoName String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   members Member[]
   tasks   Task[]
@@ -107,6 +110,10 @@ model Task {
   description String?
   status      String  @default("todo")
   order       Float   @default(0)
+
+  branchName String?
+  prNumber   Int?
+  prStatus   String?
 
   projectId String
   project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)

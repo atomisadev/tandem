@@ -6,13 +6,16 @@
   "private": true,
   "scripts": {
     "dev": "bun run --watch src/index.ts",
-    "build": "bun build src/index.ts --outdir dist --target bun"
+    "build": "bun build src/index.ts --outdir dist --target bun",
+    "db:generate": "bunx prisma generate",
+    "db:migrate": "bunx prisma migrate"
   },
   "dependencies": {
     "@elysiajs/cors": "latest",
     "@prisma/client": "5",
     "better-auth": "^1.4.10",
-    "elysia": "latest"
+    "elysia": "latest",
+    "octokit": "^5.0.5"
   },
   "devDependencies": {
     "bun-types": "latest",

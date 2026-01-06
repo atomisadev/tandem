@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { api } from "@/lib/eden";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 export interface Project {
   id: string;
@@ -11,30 +12,32 @@ export interface Project {
 }
 
 export function useProjects() {
-  const [projects, setProjects] = useState<Project[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  const fetchProjects = useCallback(async () => {
-    try {
+  return useQuery({
+    queryKey: ["projects"],
+    queryFn: async () => {
       const { data, error } = await api.api.projects.get();
-      if (data && !error) {
-        setProjects(data as unknown as Project[]);
-      }
-    } catch (e) {
-      console.error("Failed to fetch projects", e);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+      if (error) throw error;
+      return data as unknown as Project[];
+    },
+  });
+}
 
-  useEffect(() => {
-    fetchProjects();
-  }, [fetchProjects]);
+export function useCreateProject() {
+  const queryClient = useQueryClient();
 
-  return {
-    projects,
-    setProjects,
-    loading,
-    refresh: fetchProjects,
-  };
+  return useMutation({
+    mutationFn: async (payload: {
+      title: string;
+      desciription: string;
+      githubRepoId: string;
+      githubRepoName: string;
+    }) => {
+      const { data, error } = await api.api.projects.post(payload);
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["projects"] });
+    },
+  });
 }
