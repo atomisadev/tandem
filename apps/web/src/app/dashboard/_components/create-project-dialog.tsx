@@ -14,7 +14,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Plus, Github, Loader2 } from "lucide-react";
+import { Plus, Github, Loader2, Lock, Globe, Slash } from "lucide-react";
 import {
   Select,
   SelectContent,
@@ -22,7 +22,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { api } from "@/lib/eden";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
@@ -108,87 +107,85 @@ export function CreateProjectDialog({
           </DialogHeader>
 
           <div className="grid gap-5 py-5">
-            <div className="grid gap-2">
-              <Label>Owner</Label>
-              {loadingOwners ? (
-                <Skeleton className="h-10 w-full" />
-              ) : (
-                <Select
-                  value={selectedOwner}
-                  onValueChange={(val) => {
-                    setSelectedOwner(val);
-                    setSelectedRepoId("");
-                    setSelectedRepo(null);
-                  }}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select owner" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {owners?.map((owner) => (
-                      <SelectItem key={owner.login} value={owner.login}>
-                        <div className="flex items-center gap-2">
-                          <Avatar className="h-5 w-5">
-                            <AvatarImage src={owner.avatarUrl} />
-                            <AvatarFallback>
-                              {owner.login.slice(0, 1)}
-                            </AvatarFallback>
-                          </Avatar>
-                          <span>{owner.login}</span>
-                          <span className="text-xs text-muted-foreground ml-auto uppercase tracking-wider">
-                            {owner.type}
-                          </span>
-                        </div>
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              )}
-            </div>
-
-            <div className="grid gap-2">
-              <Label>Repository</Label>
-              {loadingRepos ? (
-                <div className="space-y-2">
-                  <Skeleton className="h-10 w-full" />
-                </div>
-              ) : (
-                <Select
-                  value={selectedRepoId}
-                  onValueChange={handleRepoChange}
-                  disabled={!selectedOwner}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select a repository" />
-                  </SelectTrigger>
-                  <SelectContent className="max-h-[200px]">
-                    {repos?.length === 0 ? (
-                      <div className="p-2 text-xs text-muted-foreground text-center">
-                        No repositories found.
-                      </div>
-                    ) : (
-                      repos?.map((repo) => (
-                        <SelectItem key={repo.id} value={repo.id}>
-                          <div className="flex items-center gap-2 truncate">
-                            {repo.private ? (
-                              <span className="text-xs border rounded px-1 text-muted-foreground">
-                                Pv
-                              </span>
-                            ) : (
-                              <span className="text-xs border rounded px-1 text-muted-foreground">
-                                Pu
-                              </span>
-                            )}
-                            <span className="truncate">{repo.name}</span>
+            <div className="flex items-start gap-2">
+              <div className="grid gap-2 flex-1 min-w-0">
+                <Label>Owner</Label>
+                {loadingOwners ? (
+                  <Skeleton className="h-9 w-full" />
+                ) : (
+                  <Select
+                    value={selectedOwner}
+                    onValueChange={(val) => {
+                      setSelectedOwner(val);
+                      setSelectedRepoId("");
+                      setSelectedRepo(null);
+                    }}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Owner" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {owners?.map((owner) => (
+                        <SelectItem key={owner.login} value={owner.login}>
+                          <div className="flex items-center gap-2">
+                            <Avatar className="h-4 w-4">
+                              <AvatarImage src={owner.avatarUrl} />
+                              <AvatarFallback>
+                                {owner.login.slice(0, 1)}
+                              </AvatarFallback>
+                            </Avatar>
+                            <span className="truncate">{owner.login}</span>
                           </div>
                         </SelectItem>
-                      ))
-                    )}
-                  </SelectContent>
-                </Select>
-              )}
-            </div>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+              </div>
 
+              <div className="flex items-center h-[62px] text-muted-foreground/50">
+                <Slash className="h-4 w-4 -rotate-12" />
+              </div>
+
+              <div className="grid gap-2 flex-[1.5] min-w-0">
+                <Label>Repository</Label>
+                {loadingRepos ? (
+                  <div className="space-y-2">
+                    <Skeleton className="h-9 w-full" />
+                  </div>
+                ) : (
+                  <Select
+                    value={selectedRepoId}
+                    onValueChange={handleRepoChange}
+                    disabled={!selectedOwner}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Repository" />
+                    </SelectTrigger>
+                    <SelectContent className="max-h-[200px]">
+                      {repos?.length === 0 ? (
+                        <div className="p-2 text-xs text-muted-foreground text-center">
+                          No repositories found.
+                        </div>
+                      ) : (
+                        repos?.map((repo) => (
+                          <SelectItem key={repo.id} value={repo.id}>
+                            <div className="flex items-center gap-2 truncate">
+                              {repo.private ? (
+                                <Lock className="h-3 w-3 text-muted-foreground shrink-0" />
+                              ) : (
+                                <Globe className="h-3 w-3 text-muted-foreground shrink-0" />
+                              )}
+                              <span className="truncate">{repo.name}</span>
+                            </div>
+                          </SelectItem>
+                        ))
+                      )}
+                    </SelectContent>
+                  </Select>
+                )}
+              </div>
+            </div>
             {selectedRepo && (
               <div className="space-y-4 pt-2 border-t">
                 <div className="grid gap-2">

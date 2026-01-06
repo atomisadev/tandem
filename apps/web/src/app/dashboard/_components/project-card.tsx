@@ -46,10 +46,16 @@ export function ProjectCard({
         </div>
 
         {githubRepoName && (
-          <div className="flex items-center gap-1.5 text-xs text-muted-foreground/80 font-mono mt-1">
+          <a
+            href={`https://github.com/${githubRepoName}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex w-fit items-center gap-1.5 text-xs text-muted-foreground/80 font-mono mt-1 hover:text-primary hover:underline transition-colors"
+            onClick={(e) => e.stopPropagation()}
+          >
             <Github className="h-3 w-3" />
             <span className="truncate">{githubRepoName}</span>
-          </div>
+          </a>
         )}
 
         <CardDescription className="line-clamp-2 min-h-[2.5em] mt-2">
