@@ -34,7 +34,7 @@ export default function SignUp() {
       },
       {
         onSuccess: () => {
-          router.push("/sign-in");
+          router.push("/dashboard");
         },
         onError: (ctx) => {
           alert(ctx.error.message);
@@ -46,7 +46,6 @@ export default function SignUp() {
 
   return (
     <div className="w-full lg:grid lg:min-h-screen lg:grid-cols-3 xl:min-h-screen">
-      {/* Left Side - Form */}
       <div className="flex items-center justify-center py-12 lg:col-span-1">
         <div className="mx-auto w-[350px] space-y-6">
           <Card className="border-0 shadow-none sm:border sm:shadow-sm">
@@ -109,7 +108,6 @@ export default function SignUp() {
         </div>
       </div>
 
-      {/* Right Side - Visual */}
       <div className="hidden bg-zinc-900 lg:col-span-2 lg:flex flex-col justify-between p-10 text-white dark:border-r">
         <div className="flex items-center gap-2 text-lg font-medium">
           <div className="flex h-8 w-8 items-center justify-center rounded-md bg-white text-zinc-900">
@@ -128,4 +126,5 @@ export default function SignUp() {
       </div>
     </div>
   );
+
 }

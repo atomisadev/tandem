@@ -6,6 +6,6 @@ export const config = {
     version: "1.0.0",
   },
   cors: {
-    origin: true,
+    origin: "http://localhost:3000",
   },
 };
