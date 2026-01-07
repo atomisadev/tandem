@@ -67,12 +67,17 @@ export class ProjectsService {
                 id: true,
                 name: true,
                 image: true,
-                email true,
-              }
-            }
-          }
-        }
-      }
+                email: true,
+              },
+            },
+          },
+        },
+        tasks: {
+          orderBy: {
+            order: "asc",
+          },
+        },
+      },
     });
 
     if (!project) {

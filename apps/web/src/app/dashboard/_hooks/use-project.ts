@@ -4,11 +4,34 @@ import { useState, useEffect, useCallback } from "react";
 import { api } from "@/lib/eden";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
+export interface Task {
+  id: string;
+  title: string;
+  description: string | null;
+  status: string;
+  order: number;
+  projectId: string;
+  assignedToUserId: string | null;
+  createdAt: string | Date;
+  updatedAt: string | Date;
+}
+
 export interface Project {
   id: string;
   title: string;
   description: string | null;
   createdAt: string | Date;
+  githubRepoName?: string | null;
+  members: {
+    user: {
+      id: string;
+      name: string;
+      image: string | null;
+      email: string;
+    };
+    role: string;
+  }[];
+  tasks: Task[];
 }
 
 export function useProjects() {
