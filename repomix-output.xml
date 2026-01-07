@@ -102,6 +102,10 @@ apps/
           _hooks/
             use-github.ts
             use-project.ts
+          [projectId]/
+            _components/
+              kanban-board.tsx
+            page.tsx
           layout.tsx
           page.tsx
         favicon.ico
@@ -140,7 +144,7 @@ apps/
         auth-client.ts
         eden.ts
         utils.ts
-      middleware.ts
+      proxy.ts
     .gitignore
     components.json
     eslint.config.mjs
@@ -722,6 +726,270 @@ export function useGithubRepos(owner: string, enabled: boolean = true) {
     },
     enabled: enabled && !!owner,
   });
+}
+</file>
+
+<file path="apps/web/src/app/dashboard/[projectId]/_components/kanban-board.tsx">
+"use client";
+
+import { useState, useEffect } from "react";
+import {
+  DndContext,
+  DragOverlay,
+  closestCorners,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  DragStartEvent,
+  DragOverEvent,
+  DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  verticalListSortingStrategy,
+  useSortable,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Plus, GripVertical, Keyboard, ActivitySquare } from "lucide-react";
+import { cn } from "@/lib/utils";
+import type { Task } from "../../_hooks/use-project";
+
+interface KanbanBoardProps {
+  tasks: Task[];
+  onTaskClick: (task: Task) => void;
+}
+
+type ColumnType = "todo" | "in-progress" | "done";
+
+const COLUMNS: { id: ColumnType; title: string }[] = [
+  { id: "todo", title: "To Do" },
+  { id: "in-progress", title: "In Progress" },
+  { id: "done", title: "Done" },
+];
+
+export function KanbanBoard({
+  tasks: initialTasks,
+  onTaskClick,
+}: KanbanBoardProps) {
+  const [tasks, setTasks] = useState<Task[]>(initialTasks);
+  const [activeId, setActiveId] = useState<string | null>(null);
+
+  useEffect(() => {
+    setTasks(initialTasks);
+  }, [initialTasks]);
+
+  const sensors = useSensors(
+    useSensor(PointerSensor),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
+
+  const handleDragStart = (event: DragStartEvent) => {
+    setActiveId(event.active.id as string);
+  };
+
+  const handleDragOver = (event: DragOverEvent) => {
+    const { active, over } = event;
+    if (!over) return;
+
+    const activeId = active.id;
+    const overId = over.id;
+
+    if (activeId === overId) return;
+
+    const isActiveTask = active.data.current?.type === "Task";
+    const isOverTask = over.data.current?.type === "Task";
+    const isOverColumn = over.data.current?.type === "Column";
+
+    if (!isActiveTask) return;
+
+    if (isActiveTask && isOverTask) {
+      setTasks((tasks) => {
+        const activeIndex = tasks.findIndex((t) => t.id === activeId);
+        const overIndex = tasks.findIndex((t) => t.id === overId);
+
+        if (tasks[activeIndex].status !== tasks[overIndex].status) {
+          const newTasks = [...tasks];
+          newTasks[activeIndex].status = tasks[overIndex].status;
+          return arrayMove(newTasks, activeIndex, overIndex);
+        }
+
+        return arrayMove(tasks, activeIndex, overIndex);
+      });
+    }
+
+    if (isActiveTask && isOverColumn) {
+      setTasks((tasks) => {
+        const activeIndex = tasks.findIndex((t) => t.id === activeId);
+        const newTasks = [...tasks];
+        newTasks[activeIndex].status = overId as string;
+        return arrayMove(newTasks, activeIndex, activeIndex);
+      });
+    }
+  };
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    setActiveId(null);
+  };
+
+  return (
+    <DndContext
+      sensors={sensors}
+      collisionDetection={closestCorners}
+      onDragStart={handleDragStart}
+      onDragOver={handleDragOver}
+      onDragEnd={handleDragEnd}
+    >
+      <div className="grid h-full grid-cols-3 gap-4">
+        {COLUMNS.map((col) => (
+          <KanbanColumn
+            key={col.id}
+            id={col.id}
+            title={col.title}
+            tasks={tasks.filter((t) => t.status === col.id)}
+            onTaskClick={onTaskClick}
+          />
+        ))}
+      </div>
+      <DragOverlay>
+        {activeId ? (
+          <TaskCard
+            task={tasks.find((t) => t.id === activeId)!}
+            onClick={() => {}}
+            isOverlay
+          />
+        ) : null}
+      </DragOverlay>
+    </DndContext>
+  );
+}
+
+function KanbanColumn({
+  id,
+  title,
+  tasks,
+  onTaskClick,
+}: {
+  id: string;
+  title: string;
+  tasks: Task[];
+  onTaskClick: (task: Task) => void;
+}) {
+  const { setNodeRef } = useSortable({
+    id: id,
+    data: {
+      type: "Column",
+    },
+  });
+
+  return (
+    <div
+      ref={setNodeRef}
+      className="flex h-full flex-col rounded-xl bg-muted/50 p-4 border border-border/50"
+    >
+      <div className="mb-4 flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <h3 className="font-semibold text-sm">{title}</h3>
+          <Badge variant="secondary" className="px-1.5 py-0 text-[10px]">
+            {tasks.length}
+          </Badge>
+        </div>
+        <Button variant="ghost" size="icon-xs" className="h-6 w-6">
+          <Plus className="h-3.5 w-3.5" />
+        </Button>
+      </div>
+
+      <div className="flex flex-1 flex-col gap-2 min-h-[100px]">
+        <SortableContext
+          items={tasks.map((t) => t.id)}
+          strategy={verticalListSortingStrategy}
+        >
+          {tasks.map((task) => (
+            <TaskCard key={task.id} task={task} onClick={onTaskClick} />
+          ))}
+        </SortableContext>
+      </div>
+    </div>
+  );
+}
+
+function TaskCard({
+  task,
+  onClick,
+  isOverlay,
+}: {
+  task: Task;
+  onClick: (task: Task) => void;
+  isOverlay?: boolean;
+}) {
+  const {
+    setNodeRef,
+    attributes,
+    listeners,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({
+    id: task.id,
+    data: {
+      type: "Task",
+      task,
+    },
+  });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+  };
+
+  if (isDragging) {
+    return (
+      <div
+        ref={setNodeRef}
+        style={style}
+        className="h-[100px] rounded-lg border-2 border-primary/20 bg-muted/50 opacity-50"
+      />
+    );
+  }
+
+  return (
+    <Card
+      ref={setNodeRef}
+      style={style}
+      onClick={() => onClick(task)}
+      className={cn(
+        "cursor-grab active:cursor-grabbing hover:border-primary/50 transition-colors group relative",
+        isOverlay ? "rotate-2 shadow-xl cursor-grabbing scale-105 z-50" : ""
+      )}
+    >
+      <CardHeader className="p-3 space-y-0 pb-1">
+        <div className="flex items-start justify-between gap-2">
+          <CardTitle className="text-sm font-medium leading-none line-clamp-2">
+            {task.title}
+          </CardTitle>
+          <div
+            {...attributes}
+            {...listeners}
+            className="text-muted-foreground/30 hover:text-foreground cursor-grab p-0.5 rounded -mr-1"
+          >
+            <GripVertical className="h-3.5 w-3.5" />
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent className="p-3 pt-2">
+        <p className="text-xs text-muted-foreground line-clamp-2">
+          {task.description || "No description"}
+        </p>
+      </CardContent>
+    </Card>
+  );
 }
 </file>
 
@@ -3220,6 +3488,36 @@ export function cn(...inputs: ClassValue[]) {
 }
 </file>
 
+<file path="apps/web/src/proxy.ts">
+import { NextResponse } from "next/server";
+import { NextRequest } from "next/server";
+
+export function proxy(request: NextRequest) {
+  const sessionToken = request.cookies.get("better-auth.session_token");
+  const { pathname } = request.nextUrl;
+
+  const authRoutes = ["/sign-in", "/sign-up", "/"];
+  const isAuthRoute = authRoutes.includes(pathname);
+  const isRoot = pathname === "/";
+
+  const isProtectedRoute = pathname.startsWith("/dashboard");
+
+  if (sessionToken && (isAuthRoute || isRoot)) {
+    return NextResponse.redirect(new URL("/dashboard", request.url));
+  }
+
+  if (!sessionToken && isProtectedRoute) {
+    return NextResponse.redirect(new URL("/sign-in", request.url));
+  }
+
+  return NextResponse.next();
+}
+
+export const config = {
+  matcher: ["/((?!api|_next/static|_next/image|favicon.ico).*)"],
+};
+</file>
+
 <file path="apps/web/components.json">
 {
   "$schema": "https://ui.shadcn.com/schema.json",
@@ -3655,68 +3953,6 @@ export const config = {
 };
 </file>
 
-<file path="apps/api/src/modules/projects/projects.controller.ts">
-import { Elysia, t } from "elysia";
-import { auth } from "../auth/auth";
-import { ProjectsService } from "./projects.service";
-
-export const projectsController = new Elysia({ prefix: "/api/projects" })
-  .get("/", async ({ request, set }) => {
-    const session = await auth.api.getSession({
-      headers: request.headers,
-    });
-
-    if (!session) {
-      set.status = 401;
-      return "Unauthorized";
-    }
-    return ProjectsService.getMyProjects(session.user.id);
-  })
-  .post("/", async ({ request, body, set }) => {
-    const session = await auth.api.getSession({
-      headers: request.headers,
-    });
-
-    if (!session) {
-      set.status = 401;
-      return "Unauthorized";
-    }
-
-    const { title, description, githubRepoId, githubRepoName } = body as {
-      title: string;
-      description?: string;
-      githubRepoId: string;
-      githubRepoName: string;
-    };
-
-    if (!title) {
-      set.status = 400;
-      return "Title is required";
-    }
-
-    if (!githubRepoId || !githubRepoName) {
-      set.status = 400;
-      return "Github Repository is required";
-    }
-
-    try {
-      return await ProjectsService.createProject(session.user.id, {
-        title,
-        description,
-        githubRepoId,
-        githubRepoName,
-      });
-    } catch (e: any) {
-      // TODO: bad practice but let's keep it for now :(
-      if (e.message === "Project already exists for this repository") {
-        set.status = 409;
-        return e.message;
-      }
-      throw e;
-    }
-  });
-</file>
-
 <file path="apps/api/src/index.ts">
 import { createApp } from "./app";
 import { config } from "./config";
@@ -3777,49 +4013,171 @@ app.listen(config.port, () => {
 <svg fill="none" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path fill-rule="evenodd" clip-rule="evenodd" d="M1.5 2.5h13v10a1 1 0 0 1-1 1h-11a1 1 0 0 1-1-1zM0 1h16v11.5a2.5 2.5 0 0 1-2.5 2.5h-11A2.5 2.5 0 0 1 0 12.5zm3.75 4.5a.75.75 0 1 0 0-1.5.75.75 0 0 0 0 1.5M7 4.75a.75.75 0 1 1-1.5 0 .75.75 0 0 1 1.5 0m1.75.75a.75.75 0 1 0 0-1.5.75.75 0 0 0 0 1.5" fill="#666"/></svg>
 </file>
 
-<file path="apps/web/src/app/dashboard/_hooks/use-project.ts">
+<file path="apps/web/src/app/dashboard/[projectId]/page.tsx">
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
-import { api } from "@/lib/eden";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useState } from "react";
+import { useParams } from "next/navigation";
+import { useProject, type Task } from "../_hooks/use-project";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Button } from "@/components/ui/button";
+import {
+  Avatar,
+  AvatarFallback,
+  AvatarImage,
+  AvatarGroup,
+} from "@/components/ui/avatar";
+import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Separator } from "@/components/ui/separator";
+import { Github, Share2, X, Calendar, User } from "lucide-react";
+import { KanbanBoard } from "./_components/kanban-board";
 
-export interface Project {
-  id: string;
-  title: string;
-  description: string | null;
-  createdAt: string | Date;
-}
+export default function ProjectPage() {
+  const { projectId } = useParams();
+  const { data: project, isLoading } = useProject(projectId as string);
+  const [selectedTask, setSelectedTask] = useState<Task | null>(null);
 
-export function useProjects() {
-  return useQuery({
-    queryKey: ["projects"],
-    queryFn: async () => {
-      const { data, error } = await api.api.projects.get();
-      if (error) throw error;
-      return data as unknown as Project[];
-    },
-  });
-}
+  if (isLoading) {
+    return (
+      <div className="container mx-auto max-w-6xl space-y-8 p-4">
+        <div className="flex items-center justify-between border-b pb-6">
+          <div className="space-y-2">
+            <Skeleton className="h-8 w-48" />
+            <Skeleton className="h-4 w-32" />
+          </div>
+          <div className="flex items-center gap-4">
+            <Skeleton className="h-8 w-24" />
+            <Skeleton className="h-9 w-28" />
+          </div>
+        </div>
+      </div>
+    );
+  }
 
-export function useCreateProject() {
-  const queryClient = useQueryClient();
+  if (!project) {
+    return (
+      <div className="flex h-[50vh] items-center justify-center text-muted-foreground">
+        Project not found
+      </div>
+    );
+  }
 
-  return useMutation({
-    mutationFn: async (payload: {
-      title: string;
-      desciription: string;
-      githubRepoId: string;
-      githubRepoName: string;
-    }) => {
-      const { data, error } = await api.api.projects.post(payload);
-      if (error) throw error;
-      return data;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["projects"] });
-    },
-  });
+  return (
+    <div className="container mx-auto max-w-6xl space-y-8 p-4">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between border-b pb-6">
+        <div className="space-y-1">
+          <h1 className="text-2xl font-medium tracking-tight">
+            {project.title}
+          </h1>
+          {project.githubRepoName && (
+            <a
+              href={`https://github.com/${project.githubRepoName}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex w-fit items-center gap-1.5 text-xs text-muted-foreground hover:text-primary transition-colors"
+            >
+              <Github className="h-3.5 w-3.5 opacity-70" />
+              <span className="font-mono">{project.githubRepoName}</span>
+            </a>
+          )}
+        </div>
+
+        <div className="flex items-center gap-6">
+          <AvatarGroup>
+            {project.members.map((member) => (
+              <Avatar
+                key={member.user.id}
+                className="border-2 border-background"
+              >
+                <AvatarImage
+                  src={member.user.image || ""}
+                  alt={member.user.name}
+                />
+                <AvatarFallback>
+                  {member.user.name.slice(0, 2).toUpperCase()}
+                </AvatarFallback>
+              </Avatar>
+            ))}
+          </AvatarGroup>
+
+          <Button className="gap-2" variant="outline" onClick={() => {}}>
+            <Share2 className="h-4 w-4" />
+            Share
+          </Button>
+        </div>
+      </div>
+
+      <div className="flex-1 min-h-0 grid grid-cols-4 gap-6">
+        <div className="col-span-3 h-full min-h-0">
+          <KanbanBoard tasks={project.tasks} onTaskClick={setSelectedTask} />
+        </div>
+
+        <div className="col-span-1 h-full min-h-0">
+          {selectedTask ? (
+            <Card className="h-full flex flex-col border-l-4 border-l-primary/20">
+              <CardHeader className="flex flex-row items-start justify-between space-y-0 pb-2">
+                <Badge
+                  variant="outline"
+                  className="uppercase text-[10px] tracking-widest"
+                >
+                  {selectedTask.status.replace("-", " ")}
+                </Badge>
+                <Button
+                  variant="ghost"
+                  size="icon-xs"
+                  onClick={() => setSelectedTask(null)}
+                  className="-mr-2 -mt-2"
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+              </CardHeader>
+              <CardContent className="flex-1 overflow-y-auto space-y-6 pt-4">
+                <div className="space-y-2">
+                  <h2 className="text-lg font-semibold leading-tight">
+                    {selectedTask.title}
+                  </h2>
+                  <div className="flex items-center gap-4 text-xs text-muted-foreground">
+                    <div className="flex items-center gap-1">
+                      <Calendar className="h-3.5 w-3.5" />
+                      <span>
+                        {new Date(selectedTask.createdAt).toLocaleDateString()}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <User className="h-3.5 w-3.5" />
+                      <span>Unassigned</span>
+                    </div>
+                  </div>
+                </div>
+
+                <Separator />
+
+                <div className="space-y-2">
+                  <h3 className="text-sm font-medium text-foreground">
+                    Description
+                  </h3>
+                  <p className="text-sm text-muted-foreground leading-relaxed whitespace-pre-wrap">
+                    {selectedTask.description || "No description provided."}
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+          ) : (
+            <div className="h-full rounded-xl border border-dashed flex flex-col items-center justify-center text-muted-foreground p-6 text-center">
+              <div className="h-12 w-12 rounded-full bg-muted flex items-center justify-center mb-4">
+                <div className="h-6 w-6 rounded-sm bg-foreground/20" />
+              </div>
+              <p className="font-medium">No ticket selected</p>
+              <p className="text-sm text-muted-foreground/60 mt-1">
+                Click on a ticket from the board to view its details here.
+              </p>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
 }
 </file>
 
@@ -5215,58 +5573,86 @@ model Task {
 }
 </file>
 
-<file path="apps/api/src/modules/projects/projects.service.ts">
-import { prisma } from "../../common/db";
+<file path="apps/api/src/modules/projects/projects.controller.ts">
+import { Elysia, t } from "elysia";
+import { auth } from "../auth/auth";
+import { ProjectsService } from "./projects.service";
 
-export class ProjectsService {
-  static async createProject(
-    userId: string,
-    data: {
+export const projectsController = new Elysia({ prefix: "/api/projects" })
+  .get("/", async ({ request, set }) => {
+    const session = await auth.api.getSession({
+      headers: request.headers,
+    });
+
+    if (!session) {
+      set.status = 401;
+      return "Unauthorized";
+    }
+    return ProjectsService.getMyProjects(session.user.id);
+  })
+  .get("/:id", async ({ request, params, set }) => {
+    const session = await auth.api.getSession({
+      headers: request.headers,
+    });
+
+    if (!session) {
+      set.status = 401;
+      return "Unauthorized";
+    }
+
+    try {
+      return await ProjectsService.getProject(session.user.id, params.id);
+    } catch (e: any) {
+      if (e.message === "Project not found") {
+        set.status = 404;
+        return e.message;
+      }
+      throw e;
+    }
+  })
+  .post("/", async ({ request, body, set }) => {
+    const session = await auth.api.getSession({
+      headers: request.headers,
+    });
+
+    if (!session) {
+      set.status = 401;
+      return "Unauthorized";
+    }
+
+    const { title, description, githubRepoId, githubRepoName } = body as {
       title: string;
       description?: string;
       githubRepoId: string;
       githubRepoName: string;
-    }
-  ) {
-    const existing = await prisma.project.findFirst({
-      where: { githubRepoId: data.githubRepoId },
-    });
+    };
 
-    if (existing) {
-      throw new Error("Project already exists for this repository");
+    if (!title) {
+      set.status = 400;
+      return "Title is required";
     }
 
-    return prisma.project.create({
-      data: {
-        title: data.title,
-        description: data.description,
-        githubRepoId: data.githubRepoId,
-        githubRepoName: data.githubRepoName,
-        members: {
-          create: {
-            userId,
-            role: "OWNER",
-          },
-        },
-      },
-    });
-  }
+    if (!githubRepoId || !githubRepoName) {
+      set.status = 400;
+      return "Github Repository is required";
+    }
 
-  static async getMyProjects(userId: string) {
-    return prisma.project.findMany({
-      where: {
-        members: {
-          some: {
-            userId,
-          },
-        },
-      },
-      orderBy: {
-        updatedAt: "desc",
-      },
-    });
-  }
-}
+    try {
+      return await ProjectsService.createProject(session.user.id, {
+        title,
+        description,
+        githubRepoId,
+        githubRepoName,
+      });
+    } catch (e: any) {
+      // TODO: bad practice but let's keep it for now :(
+      if (e.message === "Project already exists for this repository") {
+        set.status = 409;
+        return e.message;
+      }
+      throw e;
+    }
+  });
 </file>
 
 <file path="apps/api/src/modules/index.ts">
@@ -5516,164 +5902,6 @@ export default function SignUp() {
 }
 </file>
 
-<file path="apps/web/src/app/dashboard/_components/project-card.tsx">
-"use client";
-
-import {
-  Card,
-  CardHeader,
-  CardTitle,
-  CardDescription,
-  CardFooter,
-} from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Github } from "lucide-react";
-
-const timeAgo = (date: string | Date) => {
-  const d = new Date(date);
-  if (isNaN(d.getTime())) return "Just Now";
-  return d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
-};
-
-interface ProjectCardProps {
-  title: string;
-  description: string | null;
-  createdAt: string | Date;
-  githubRepoName?: string | null;
-  isOptimistic?: boolean;
-}
-
-export function ProjectCard({
-  title,
-  description,
-  createdAt,
-  githubRepoName,
-  isOptimistic,
-}: ProjectCardProps) {
-  return (
-    <Card
-      className={`group flex flex-col justify-between transition-all hover:border-primary/50 ${isOptimistic ? "opacity-70 animate-pulse" : ""}`}
-    >
-      <CardHeader>
-        <div className="flex items-start justify-between">
-          <CardTitle className="line-clamp-1 text-base">{title}</CardTitle>
-          {isOptimistic && (
-            <Badge variant="secondary" className="text-[10px] h-4">
-              Creating
-            </Badge>
-          )}
-        </div>
-
-        {githubRepoName && (
-          <a
-            href={`https://github.com/${githubRepoName}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex w-fit items-center gap-1.5 text-xs text-muted-foreground/80 font-mono mt-1 hover:text-primary hover:underline transition-colors"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <Github className="h-3 w-3" />
-            <span className="truncate">{githubRepoName}</span>
-          </a>
-        )}
-
-        <CardDescription className="line-clamp-2 min-h-[2.5em] mt-2">
-          {description || "No description provided."}
-        </CardDescription>
-      </CardHeader>
-      <CardFooter className="text-[10px] text-muted-foreground">
-        Created {timeAgo(createdAt)}
-      </CardFooter>
-    </Card>
-  );
-}
-</file>
-
-<file path="apps/web/src/app/dashboard/page.tsx">
-"use client";
-
-import { useOptimistic, startTransition } from "react";
-import { api } from "@/lib/eden";
-import {
-  useCreateProject,
-  useProjects,
-  type Project,
-} from "./_hooks/use-project";
-import { CreateProjectDialog } from "./_components/create-project-dialog";
-import { ProjectCard } from "./_components/project-card";
-import { Loader2 } from "lucide-react";
-import { ProjectCardSkeleton } from "./_components/project-card-skeleton";
-import { toast } from "sonner";
-
-export default function DashboardPage() {
-  const { data: projects, isLoading } = useProjects();
-  const { mutate: createProject, isPending: isCreating } = useCreateProject();
-
-  const handleCreateProject = async (data: {
-    title: string;
-    description: string;
-    githubRepoId: string;
-    githubRepoName: string;
-  }) => {
-    createProject(data, {
-      onSuccess: () => {
-        toast.success("Project created successfully");
-      },
-      onError: (e) => {
-        toast.error("Failed to create project", {
-          description: e.message,
-        });
-      },
-    });
-  };
-
-  return (
-    <div className="container mx-auto max-w-6xl space-y-8 p-4">
-      <div className="flex items-center justify-between border-b pb-6">
-        <div>
-          <h1 className="text-2xl font-medium tracking-tight">Projects</h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            Manage and track your ongoing work.
-          </p>
-        </div>
-        <CreateProjectDialog onCreate={handleCreateProject} />
-      </div>
-
-      {isLoading ? (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          {Array.from({ length: 4 }).map((_, i) => (
-            <ProjectCardSkeleton key={i} />
-          ))}
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          {projects?.length === 0 ? (
-            <div className="col-span-full flex h-64 flex-col items-center justify-center rounded-lg border border-dashed text-center">
-              <p className="text-sm text-muted-foreground">
-                No projects found.
-              </p>
-              <p className="text-xs text-muted-foreground/60">
-                Link a GitHub repository to get started.
-              </p>
-            </div>
-          ) : (
-            projects?.map((project) => (
-              <ProjectCard
-                key={project.id}
-                title={project.title}
-                description={project.description}
-                createdAt={project.createdAt}
-                githubRepoName={project.githubRepoName}
-              />
-            ))
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
-</file>
-
 <file path="apps/web/src/components/app-sidebar.tsx">
 "use client";
 
@@ -5811,36 +6039,6 @@ export function AppSidebar() {
     </Sidebar>
   );
 }
-</file>
-
-<file path="apps/web/src/middleware.ts">
-import { NextResponse } from "next/server";
-import { NextRequest } from "next/server";
-
-export function middleware(request: NextRequest) {
-  const sessionToken = request.cookies.get("better-auth.session_token");
-  const { pathname } = request.nextUrl;
-
-  const authRoutes = ["/sign-in", "/sign-up", "/"];
-  const isAuthRoute = authRoutes.includes(pathname);
-  const isRoot = pathname === "/";
-
-  const isProtectedRoute = pathname.startsWith("/dashboard");
-
-  if (sessionToken && (isAuthRoute || isRoot)) {
-    return NextResponse.redirect(new URL("/dashboard", request.url));
-  }
-
-  if (!sessionToken && isProtectedRoute) {
-    return NextResponse.redirect(new URL("/sign-in", request.url));
-  }
-
-  return NextResponse.next();
-}
-
-export const config = {
-  matcher: ["/((?!api|_next/static|_next/image|favicon.ico).*)"],
-};
 </file>
 
 <file path="apps/api/src/modules/auth/auth.ts">
@@ -6158,6 +6356,257 @@ export function CreateProjectDialog({
 }
 </file>
 
+<file path="apps/web/src/app/dashboard/_components/project-card.tsx">
+"use client";
+
+import {
+  Card,
+  CardHeader,
+  CardTitle,
+  CardDescription,
+  CardFooter,
+} from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Github } from "lucide-react";
+import Link from "next/link";
+import { cn } from "@/lib/utils";
+
+const timeAgo = (date: string | Date) => {
+  const d = new Date(date);
+  if (isNaN(d.getTime())) return "Just Now";
+  return d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+};
+
+interface ProjectCardProps {
+  id: string;
+  title: string;
+  description: string | null;
+  createdAt: string | Date;
+  githubRepoName?: string | null;
+  isOptimistic?: boolean;
+}
+
+export function ProjectCard({
+  id,
+  title,
+  description,
+  createdAt,
+  githubRepoName,
+  isOptimistic,
+}: ProjectCardProps) {
+  const Content = (
+    <Card
+      className={cn(
+        "group flex flex-col justify-between transition-all hover:border-primary/50 h-full",
+        isOptimistic && "opacity-70 animate-pulse"
+      )}
+    >
+      <CardHeader>
+        <div className="flex items-start justify-between">
+          <CardTitle className="line-clamp-1 text-base">{title}</CardTitle>
+          {isOptimistic && (
+            <Badge variant="secondary" className="text-[10px] h-4">
+              Creating
+            </Badge>
+          )}
+        </div>
+
+        {githubRepoName && (
+          <div className="flex w-fit items-center gap-1.5 text-xs text-muted-foreground/80 font-mono mt-1">
+            <Github className="h-3 w-3" />
+            <span className="truncate">{githubRepoName}</span>
+          </div>
+        )}
+
+        <CardDescription className="line-clamp-2 min-h-[2.5em] mt-2">
+          {description || "No description provided."}
+        </CardDescription>
+      </CardHeader>
+      <CardFooter className="text-[10px] text-muted-foreground">
+        Created {timeAgo(createdAt)}
+      </CardFooter>
+    </Card>
+  );
+
+  if (isOptimistic) {
+    return Content;
+  }
+
+  return (
+    <Link href={`/dashboard/${id}`} className="block h-full">
+      {Content}
+    </Link>
+  );
+}
+</file>
+
+<file path="apps/web/src/app/dashboard/_hooks/use-project.ts">
+"use client";
+
+import { useState, useEffect, useCallback } from "react";
+import { api } from "@/lib/eden";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+
+export interface Task {
+  id: string;
+  title: string;
+  description: string | null;
+  status: string;
+  order: number;
+  projectId: string;
+  assignedToUserId: string | null;
+  createdAt: string | Date;
+  updatedAt: string | Date;
+}
+
+export interface Project {
+  id: string;
+  title: string;
+  description: string | null;
+  createdAt: string | Date;
+  githubRepoName?: string | null;
+  members: {
+    user: {
+      id: string;
+      name: string;
+      image: string | null;
+      email: string;
+    };
+    role: string;
+  }[];
+  tasks: Task[];
+}
+
+export function useProjects() {
+  return useQuery({
+    queryKey: ["projects"],
+    queryFn: async () => {
+      const { data, error } = await api.api.projects.get();
+      if (error) throw error;
+      return data as unknown as Project[];
+    },
+  });
+}
+
+export function useProject(projectId: string) {
+  return useQuery({
+    queryKey: ["project", projectId],
+    queryFn: async () => {
+      const { data, error } = await api.api.projects[projectId].get();
+      if (error) throw error;
+      return data as unknown as Project;
+    },
+    enabled: !!projectId,
+  });
+}
+
+export function useCreateProject() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (payload: {
+      title: string;
+      desciription: string;
+      githubRepoId: string;
+      githubRepoName: string;
+    }) => {
+      const { data, error } = await api.api.projects.post(payload);
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["projects"] });
+    },
+  });
+}
+</file>
+
+<file path="apps/web/src/app/dashboard/page.tsx">
+"use client";
+
+import { useOptimistic, startTransition } from "react";
+import { api } from "@/lib/eden";
+import {
+  useCreateProject,
+  useProjects,
+  type Project,
+} from "./_hooks/use-project";
+import { CreateProjectDialog } from "./_components/create-project-dialog";
+import { ProjectCard } from "./_components/project-card";
+import { Loader2 } from "lucide-react";
+import { ProjectCardSkeleton } from "./_components/project-card-skeleton";
+import { toast } from "sonner";
+
+export default function DashboardPage() {
+  const { data: projects, isLoading } = useProjects();
+  const { mutate: createProject, isPending: isCreating } = useCreateProject();
+
+  const handleCreateProject = async (data: {
+    title: string;
+    description: string;
+    githubRepoId: string;
+    githubRepoName: string;
+  }) => {
+    createProject(data, {
+      onSuccess: () => {
+        toast.success("Project created successfully");
+      },
+      onError: (e) => {
+        toast.error("Failed to create project", {
+          description: e.message,
+        });
+      },
+    });
+  };
+
+  return (
+    <div className="container mx-auto max-w-6xl space-y-8 p-4">
+      <div className="flex items-center justify-between border-b pb-6">
+        <div>
+          <h1 className="text-2xl font-medium tracking-tight">Projects</h1>
+          <p className="text-sm text-muted-foreground mt-1">
+            Manage and track your ongoing work.
+          </p>
+        </div>
+        <CreateProjectDialog onCreate={handleCreateProject} />
+      </div>
+
+      {isLoading ? (
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <ProjectCardSkeleton key={i} />
+          ))}
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          {projects?.length === 0 ? (
+            <div className="col-span-full flex h-64 flex-col items-center justify-center rounded-lg border border-dashed text-center">
+              <p className="text-sm text-muted-foreground">
+                No projects found.
+              </p>
+              <p className="text-xs text-muted-foreground/60">
+                Link a GitHub repository to get started.
+              </p>
+            </div>
+          ) : (
+            projects?.map((project) => (
+              <ProjectCard
+                key={project.id}
+                id={project.id}
+                title={project.title}
+                description={project.description}
+                createdAt={project.createdAt}
+                githubRepoName={project.githubRepoName}
+              />
+            ))
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+</file>
+
 <file path="apps/web/src/app/layout.tsx">
 import type { Metadata } from "next";
 import { Geist, Geist_Mono, Inter, Roboto } from "next/font/google";
@@ -6207,6 +6656,98 @@ export default function RootLayout({
 }
 </file>
 
+<file path="apps/api/src/modules/projects/projects.service.ts">
+import { prisma } from "../../common/db";
+
+export class ProjectsService {
+  static async createProject(
+    userId: string,
+    data: {
+      title: string;
+      description?: string;
+      githubRepoId: string;
+      githubRepoName: string;
+    }
+  ) {
+    const existing = await prisma.project.findFirst({
+      where: { githubRepoId: data.githubRepoId },
+    });
+
+    if (existing) {
+      throw new Error("Project already exists for this repository");
+    }
+
+    return prisma.project.create({
+      data: {
+        title: data.title,
+        description: data.description,
+        githubRepoId: data.githubRepoId,
+        githubRepoName: data.githubRepoName,
+        members: {
+          create: {
+            userId,
+            role: "OWNER",
+          },
+        },
+      },
+    });
+  }
+
+  static async getMyProjects(userId: string) {
+    return prisma.project.findMany({
+      where: {
+        members: {
+          some: {
+            userId,
+          },
+        },
+      },
+      orderBy: {
+        updatedAt: "desc",
+      },
+    });
+  }
+
+  static async getProject(userId: string, projectId: string) {
+    const project = await prisma.project.findFirst({
+      where: {
+        id: projectId,
+        members: {
+          some: {
+            userId,
+          },
+        },
+      },
+      include: {
+        members: {
+          include: {
+            user: {
+              select: {
+                id: true,
+                name: true,
+                image: true,
+                email: true,
+              },
+            },
+          },
+        },
+        tasks: {
+          orderBy: {
+            order: "asc",
+          },
+        },
+      },
+    });
+
+    if (!project) {
+      throw new Error("Project not found");
+    }
+
+    return project;
+  }
+}
+</file>
+
 <file path="package.json">
 {
   "name": "tandem",
@@ -6251,6 +6792,9 @@ export default function RootLayout({
   },
   "dependencies": {
     "@base-ui/react": "^1.0.0",
+    "@dnd-kit/core": "^6.3.1",
+    "@dnd-kit/sortable": "^10.0.0",
+    "@dnd-kit/utilities": "^3.2.2",
     "@elysiajs/eden": "^1.4.6",
     "@tabler/icons-react": "^3.36.1",
     "@tandem/api": "workspace:*",

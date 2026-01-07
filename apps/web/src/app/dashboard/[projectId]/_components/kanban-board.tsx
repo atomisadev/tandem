@@ -24,11 +24,15 @@ import { CSS } from "@dnd-kit/utilities";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Plus, GripVertical, Keyboard, ActivitySquare } from "lucide-react";
+import { Plus, GripVertical } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { Task } from "../../_hooks/use-project";
+import { useCreateTask, useUpdateTask } from "../../_hooks/use-project";
+import { CreateTaskDialog } from "./create-task-dialog";
+import { toast } from "sonner";
 
 interface KanbanBoardProps {
+  projectId: string;
   tasks: Task[];
   onTaskClick: (task: Task) => void;
 }
@@ -42,18 +46,29 @@ const COLUMNS: { id: ColumnType; title: string }[] = [
 ];
 
 export function KanbanBoard({
+  projectId,
   tasks: initialTasks,
   onTaskClick,
 }: KanbanBoardProps) {
   const [tasks, setTasks] = useState<Task[]>(initialTasks);
   const [activeId, setActiveId] = useState<string | null>(null);
 
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [activeColId, setActiveColId] = useState<string>("todo");
+
+  const { mutateAsync: createTask } = useCreateTask();
+  const { mutate: updateTask } = useUpdateTask();
+
   useEffect(() => {
     setTasks(initialTasks);
   }, [initialTasks]);
 
   const sensors = useSensors(
-    useSensor(PointerSensor),
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 8,
+      },
+    }),
     useSensor(KeyboardSensor, {
       coordinateGetter: sortableKeyboardCoordinates,
     })
@@ -85,7 +100,10 @@ export function KanbanBoard({
 
         if (tasks[activeIndex].status !== tasks[overIndex].status) {
           const newTasks = [...tasks];
-          newTasks[activeIndex].status = tasks[overIndex].status;
+          newTasks[activeIndex] = {
+            ...newTasks[activeIndex],
+            status: tasks[overIndex].status,
+          };
           return arrayMove(newTasks, activeIndex, overIndex);
         }
 
@@ -97,14 +115,55 @@ export function KanbanBoard({
       setTasks((tasks) => {
         const activeIndex = tasks.findIndex((t) => t.id === activeId);
         const newTasks = [...tasks];
-        newTasks[activeIndex].status = overId as string;
-        return arrayMove(newTasks, activeIndex, activeIndex);
+
+        if (newTasks[activeIndex].status !== overId) {
+          newTasks[activeIndex] = {
+            ...newTasks[activeIndex],
+            status: overId as string,
+          };
+          return arrayMove(newTasks, activeIndex, activeIndex);
+        }
+        return newTasks;
       });
     }
   };
 
   const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    const taskId = active.id as string;
+
+    const task = tasks.find((t) => t.id === taskId);
+
+    if (task && over) {
+      updateTask(
+        {
+          taskId,
+          projectId,
+          data: { status: task.status },
+        },
+        {
+          onError: () => {
+            toast.error("Failed to move task");
+          },
+        }
+      );
+    }
+
     setActiveId(null);
+  };
+
+  const openCreateDialog = (columnId: string) => {
+    setActiveColId(columnId);
+    setIsDialogOpen(true);
+  };
+
+  const handleCreateTask = async (title: string) => {
+    await createTask({
+      projectId,
+      title,
+      status: activeColId,
+    });
+    toast.success("Task created");
   };
 
   return (
@@ -115,7 +174,7 @@ export function KanbanBoard({
       onDragOver={handleDragOver}
       onDragEnd={handleDragEnd}
     >
-      <div className="grid h-full grid-cols-3 gap-4">
+      <div className="grid h-full grid-cols-1 md:grid-cols-3 gap-4">
         {COLUMNS.map((col) => (
           <KanbanColumn
             key={col.id}
@@ -123,9 +182,11 @@ export function KanbanBoard({
             title={col.title}
             tasks={tasks.filter((t) => t.status === col.id)}
             onTaskClick={onTaskClick}
+            onAddClick={() => openCreateDialog(col.id)}
           />
         ))}
       </div>
+
       <DragOverlay>
         {activeId ? (
           <TaskCard
@@ -135,6 +196,13 @@ export function KanbanBoard({
           />
         ) : null}
       </DragOverlay>
+
+      <CreateTaskDialog
+        open={isDialogOpen}
+        onOpenChange={setIsDialogOpen}
+        status={activeColId}
+        onCreate={handleCreateTask}
+      />
     </DndContext>
   );
 }
@@ -144,11 +212,13 @@ function KanbanColumn({
   title,
   tasks,
   onTaskClick,
+  onAddClick,
 }: {
   id: string;
   title: string;
   tasks: Task[];
   onTaskClick: (task: Task) => void;
+  onAddClick: () => void;
 }) {
   const { setNodeRef } = useSortable({
     id: id,
@@ -169,7 +239,12 @@ function KanbanColumn({
             {tasks.length}
           </Badge>
         </div>
-        <Button variant="ghost" size="icon-xs" className="h-6 w-6">
+        <Button
+          variant="ghost"
+          size="icon-xs"
+          className="h-6 w-6"
+          onClick={onAddClick}
+        >
           <Plus className="h-3.5 w-3.5" />
         </Button>
       </div>

@@ -76,4 +76,43 @@ export const projectsController = new Elysia({ prefix: "/api/projects" })
       }
       throw e;
     }
+  })
+  .post("/:id/tasks", async ({ request, params, body, set }) => {
+    const session = await auth.api.getSession({ headers: request.headers });
+    if (!session) {
+      set.status = 401;
+      return "Unauthorized";
+    }
+
+    const { title, status } = body as { title: string; status: string };
+
+    if (!title) {
+      set.status = 400;
+      return "Title is required";
+    }
+
+    return ProjectsService.createTask(session.user.id, params.id, {
+      title,
+      status: status || "todo",
+    });
+  })
+  .patch("/tasks/:taskId", async ({ request, params, body, set }) => {
+    const session = await auth.api.getSession({ headers: request.headers });
+    if (!session) {
+      set.status = 401;
+      return "Unauthorized";
+    }
+
+    const updateData = body as {
+      status?: string;
+      order?: number;
+      title?: string;
+      description?: string;
+    };
+
+    return ProjectsService.updateTask(
+      session.user.id,
+      params.taskId,
+      updateData
+    );
   });

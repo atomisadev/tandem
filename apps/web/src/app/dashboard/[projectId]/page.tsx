@@ -94,7 +94,11 @@ export default function ProjectPage() {
 
       <div className="flex-1 min-h-0 grid grid-cols-4 gap-6">
         <div className="col-span-3 h-full min-h-0">
-          <KanbanBoard tasks={project.tasks} onTaskClick={setSelectedTask} />
+          <KanbanBoard
+            projectId={project.id}
+            tasks={project.tasks}
+            onTaskClick={setSelectedTask}
+          />
         </div>
 
         <div className="col-span-1 h-full min-h-0">

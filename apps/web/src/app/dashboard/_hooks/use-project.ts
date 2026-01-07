@@ -76,3 +76,57 @@ export function useCreateProject() {
     },
   });
 }
+
+export function useCreateTask() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({
+      projectId,
+      title,
+      status,
+    }: {
+      projectId: string;
+      title: string;
+      status: string;
+    }) => {
+      const { data, error } = await api.api.projects[projectId].tasks.post({
+        title,
+        status,
+      });
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({
+        queryKey: ["project", variables.projectId],
+      });
+    },
+  });
+}
+
+export function useUpdateTask() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async ({
+      taskId,
+      projectId,
+      data,
+    }: {
+      taskId: string;
+      projectId: string;
+      data: Partial<Task>;
+    }) => {
+      const { data: result, error } =
+        await api.api.projects.tasks[taskId].patch(data);
+      if (error) throw error;
+      return result;
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({
+        queryKey: ["project", variables.projectId],
+      });
+    },
+  });
+}

@@ -86,4 +86,71 @@ export class ProjectsService {
 
     return project;
   }
+
+  static async createTask(
+    userId: string,
+    projectId: string,
+    data: { title: string; status: string }
+  ) {
+    const member = await prisma.member.findUnique({
+      where: {
+        userId_projectId: {
+          userId,
+          projectId,
+        },
+      },
+    });
+
+    if (!member) {
+      throw new Error("Unauthorized");
+    }
+
+    const lastTrack = await prisma.task.findFirst({
+      where: { projectId, status: data.status },
+    });
+
+    const newOrder = lastTrack ? lastTrack.order + 1000 : 1000;
+
+    return prisma.task.create({
+      data: {
+        title: data.title,
+        status: data.status,
+        projectId,
+        order: newOrder,
+      },
+    });
+  }
+
+  static async updateTask(
+    userId: string,
+    taskId: string,
+    data: {
+      status?: string;
+      order?: number;
+      title?: string;
+      description?: string;
+    }
+  ) {
+    const task = await prisma.task.findUnique({
+      where: { id: taskId },
+    });
+
+    if (!task) throw new Error("Task not found");
+
+    const member = await prisma.member.findUnique({
+      where: {
+        userId_projectId: {
+          userId,
+          projectId: task.projectId,
+        },
+      },
+    });
+
+    if (!member) throw new Error("Unauthorized");
+
+    return prisma.task.update({
+      where: { id: taskId },
+      data,
+    });
+  }
 }
