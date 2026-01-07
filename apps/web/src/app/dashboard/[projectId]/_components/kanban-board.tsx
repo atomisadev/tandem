@@ -1,5 +1,3 @@
-"use client";
-
 import { useState, useEffect } from "react";
 import {
   DndContext,
@@ -21,10 +19,9 @@ import {
   useSortable,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Plus, GripVertical } from "lucide-react";
+import { Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { Task } from "../../_hooks/use-project";
 import { useCreateTask, useUpdateTask } from "../../_hooks/use-project";
@@ -174,7 +171,7 @@ export function KanbanBoard({
       onDragOver={handleDragOver}
       onDragEnd={handleDragEnd}
     >
-      <div className="grid h-full grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid h-full grid-cols-1 md:grid-cols-3 gap-6">
         {COLUMNS.map((col) => (
           <KanbanColumn
             key={col.id}
@@ -230,7 +227,7 @@ function KanbanColumn({
   return (
     <div
       ref={setNodeRef}
-      className="flex h-full flex-col rounded-xl bg-muted/50 p-4 border border-border/50"
+      className="flex h-full flex-col rounded-xl bg-muted/20 border-2 border-dashed border-border/50 px-4 py-4"
     >
       <div className="mb-4 flex items-center justify-between">
         <div className="flex items-center gap-2">
@@ -249,7 +246,7 @@ function KanbanColumn({
         </Button>
       </div>
 
-      <div className="flex flex-1 flex-col gap-2 min-h-[100px]">
+      <div className="flex flex-1 flex-col gap-3 overflow-y-auto min-h-0">
         <SortableContext
           items={tasks.map((t) => t.id)}
           strategy={verticalListSortingStrategy}
@@ -297,40 +294,33 @@ function TaskCard({
       <div
         ref={setNodeRef}
         style={style}
-        className="h-[100px] rounded-lg border-2 border-primary/20 bg-muted/50 opacity-50"
+        className="h-[60px] w-full rounded-md border border-dashed border-primary/40 bg-muted/50 opacity-50"
       />
     );
   }
 
   return (
-    <Card
+    <div
       ref={setNodeRef}
       style={style}
+      {...attributes}
+      {...listeners}
       onClick={() => onClick(task)}
       className={cn(
-        "cursor-grab active:cursor-grabbing hover:border-primary/50 transition-colors group relative",
-        isOverlay ? "rotate-2 shadow-xl cursor-grabbing scale-105 z-50" : ""
+        "flex flex-col gap-1.5 rounded-md border bg-card p-2.5 text-card-foreground shadow-sm transition-all hover:ring-2 hover:ring-primary/20 hover:border-primary/50 cursor-grab active:cursor-grabbing group select-none relative",
+        isOverlay
+          ? "rotate-2 scale-105 z-50 shadow-xl cursor-grabbing ring-2 ring-primary/20"
+          : ""
       )}
     >
-      <CardHeader className="p-3 space-y-0 pb-1">
-        <div className="flex items-start justify-between gap-2">
-          <CardTitle className="text-sm font-medium leading-none line-clamp-2">
-            {task.title}
-          </CardTitle>
-          <div
-            {...attributes}
-            {...listeners}
-            className="text-muted-foreground/30 hover:text-foreground cursor-grab p-0.5 rounded -mr-1"
-          >
-            <GripVertical className="h-3.5 w-3.5" />
-          </div>
-        </div>
-      </CardHeader>
-      <CardContent className="p-3 pt-2">
-        <p className="text-xs text-muted-foreground line-clamp-2">
-          {task.description || "No description"}
+      <div className="flex items-start justify-between gap-2">
+        <span className="font-medium text-sm leading-tight">{task.title}</span>
+      </div>
+      {task.description && (
+        <p className="text-[10px] text-muted-foreground line-clamp-2 leading-relaxed">
+          {task.description}
         </p>
-      </CardContent>
-    </Card>
+      )}
+    </div>
   );
 }

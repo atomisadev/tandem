@@ -11,16 +11,22 @@ import {
   AvatarImage,
   AvatarGroup,
 } from "@/components/ui/avatar";
-import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Github, Share2, X, Calendar, User } from "lucide-react";
 import { KanbanBoard } from "./_components/kanban-board";
+import { cn } from "@/lib/utils";
 
 export default function ProjectPage() {
   const { projectId } = useParams();
   const { data: project, isLoading } = useProject(projectId as string);
-  const [selectedTask, setSelectedTask] = useState<Task | null>(null);
+
+  // Changed: Store ID instead of the whole object to ensure we always display fresh data
+  const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
+
+  // Derived state: Get the latest task data from the project query
+  const selectedTask =
+    project?.tasks.find((t) => t.id === selectedTaskId) || null;
 
   if (isLoading) {
     return (
@@ -48,8 +54,8 @@ export default function ProjectPage() {
   }
 
   return (
-    <div className="container mx-auto max-w-6xl space-y-8 p-4">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between border-b pb-6">
+    <div className="flex flex-col h-[calc(100vh-2rem)] space-y-4">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between border-b pb-4 shrink-0 px-4">
         <div className="space-y-1">
           <h1 className="text-2xl font-medium tracking-tight">
             {project.title}
@@ -92,35 +98,45 @@ export default function ProjectPage() {
         </div>
       </div>
 
-      <div className="flex-1 min-h-0 grid grid-cols-4 gap-6">
-        <div className="col-span-3 h-full min-h-0">
+      <div className="flex flex-1 min-h-0 overflow-hidden gap-6 px-4 pb-4">
+        <div className="flex-1 min-w-0 h-full">
           <KanbanBoard
             projectId={project.id}
             tasks={project.tasks}
-            onTaskClick={setSelectedTask}
+            onTaskClick={(task) => setSelectedTaskId(task.id)}
           />
         </div>
 
-        <div className="col-span-1 h-full min-h-0">
+        <div
+          className={cn(
+            "h-full border-l bg-background transition-all duration-300 ease-in-out overflow-hidden flex flex-col",
+            selectedTask
+              ? "w-[400px] opacity-100 ml-0 pl-6"
+              : "w-0 opacity-0 ml-0 pl-0 border-l-0"
+          )}
+        >
           {selectedTask ? (
-            <Card className="h-full flex flex-col border-l-4 border-l-primary/20">
-              <CardHeader className="flex flex-row items-start justify-between space-y-0 pb-2">
+            <div className="h-full flex flex-col">
+              <div className="flex flex-row items-center justify-between space-y-0 pb-4 shrink-0">
                 <Badge
                   variant="outline"
                   className="uppercase text-[10px] tracking-widest"
                 >
                   {selectedTask.status.replace("-", " ")}
                 </Badge>
+                {/* Fixed X button sizing and margin */}
                 <Button
                   variant="ghost"
-                  size="icon-xs"
-                  onClick={() => setSelectedTask(null)}
-                  className="-mr-2 -mt-2"
+                  size="icon-sm"
+                  onClick={() => setSelectedTaskId(null)}
+                  className="h-8 w-8"
                 >
                   <X className="h-4 w-4" />
+                  <span className="sr-only">Close</span>
                 </Button>
-              </CardHeader>
-              <CardContent className="flex-1 overflow-y-auto space-y-6 pt-4">
+              </div>
+
+              <div className="flex-1 overflow-y-auto space-y-6 pr-2">
                 <div className="space-y-2">
                   <h2 className="text-lg font-semibold leading-tight">
                     {selectedTask.title}
@@ -149,19 +165,9 @@ export default function ProjectPage() {
                     {selectedTask.description || "No description provided."}
                   </p>
                 </div>
-              </CardContent>
-            </Card>
-          ) : (
-            <div className="h-full rounded-xl border border-dashed flex flex-col items-center justify-center text-muted-foreground p-6 text-center">
-              <div className="h-12 w-12 rounded-full bg-muted flex items-center justify-center mb-4">
-                <div className="h-6 w-6 rounded-sm bg-foreground/20" />
               </div>
-              <p className="font-medium">No ticket selected</p>
-              <p className="text-sm text-muted-foreground/60 mt-1">
-                Click on a ticket from the board to view its details here.
-              </p>
             </div>
-          )}
+          ) : null}
         </div>
       </div>
     </div>
