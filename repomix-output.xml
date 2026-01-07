@@ -48,6 +48,10 @@ apps/
           migration.sql
         20260105222429_add_kanban_schema/
           migration.sql
+        20260106000000_add_github_fields/
+          migration.sql
+        20260106215046_add_github_fields/
+          migration.sql
         migration_lock.toml
       schema.prisma
     src/
@@ -93,8 +97,10 @@ apps/
         dashboard/
           _components/
             create-project-dialog.tsx
+            project-card-skeleton.tsx
             project-card.tsx
           _hooks/
+            use-github.ts
             use-project.ts
           layout.tsx
           page.tsx
@@ -110,20 +116,24 @@ apps/
           button.tsx
           card.tsx
           combobox.tsx
+          command.tsx
           dialog.tsx
           dropdown-menu.tsx
           field.tsx
           input-group.tsx
           input.tsx
           label.tsx
+          popover.tsx
           select.tsx
           separator.tsx
           sheet.tsx
           sidebar.tsx
           skeleton.tsx
+          sonner.tsx
           textarea.tsx
           tooltip.tsx
         app-sidebar.tsx
+        providers.tsx
       hooks/
         use-mobile.ts
       lib/
@@ -169,111 +179,6 @@ turbo.json
 
 <files>
 This section contains the contents of the repository's files.
-
-<file path="apps/api/src/modules/github/github.controller.ts">
-import { Elysia, t } from "elysia";
-import { auth } from "../auth/auth";
-import { GithubService } from "./github.service";
-
-export const githubController = new Elysia({ prefix: "/api/github" })
-  .get("/owners", async ({ request, set }) => {
-    const session = await auth.api.getSession({ headers: request.headers });
-    if (!session) {
-      set.status = 401;
-      throw new Error("Unauthorized");
-    }
-    return GithubService.getOwners(session.user.id);
-  })
-  .get("/repos/:owner", async ({ request, params, set }) => {
-    const session = await auth.api.getSession({ headers: request.headers });
-    if (!session) {
-      set.status = 401;
-      throw new Error("Unauthorized");
-    }
-    return GithubService.getRepos(session.user.id, params.owner);
-  });
-</file>
-
-<file path="apps/api/src/modules/github/github.service.ts">
-import { resolveProjectReferencePath } from "typescript";
-import { prisma } from "../../common/db";
-import { Octokit } from "octokit";
-
-export class GithubService {
-  private static async getAccessToken(userId: string) {
-    const account = await prisma.account.findFirst({
-      where: {
-        userId,
-        providerId: "github",
-      },
-    });
-
-    if (!account || !account.accessToken) {
-      throw new Error("No Github account linked");
-    }
-
-    return account.accessToken;
-  }
-
-  static async getOwners(userId: string) {
-    const token = await this.getAccessToken(userId);
-    const octokit = new Octokit({ auth: token });
-
-    const [user, orgs] = await Promise.all([
-      octokit.rest.users.getAuthenticated(),
-      octokit.rest.orgs.listForAuthenticatedUser(),
-    ]);
-
-    return [
-      {
-        login: user.data.login,
-        avatarUrl: user.data.avatar_url,
-        type: "User",
-        id: user.data.id,
-      },
-      ...orgs.data.map((org) => ({
-        login: org.login,
-        avatarUrl: org.avatar_url,
-        type: "Organization",
-        id: org.id,
-      })),
-    ];
-  }
-
-  static async getRepos(userId: string, owner: string) {
-    const token = await this.getAccessToken(userId);
-    const octokit = new Octokit({ auth: token });
-
-    const user = await octokit.rest.users.getAuthenticated();
-
-    let repos;
-
-    if (owner === user.data.login) {
-      repos = await octokit.rest.repos.listForAuthenticatedUser({
-        visibility: "all",
-        sort: "updated",
-        per_page: 100,
-        affiliation: "owner,collaborator,organization_member",
-      });
-    } else {
-      repos = await octokit.rest.repos.listForOrg({
-        org: owner,
-        sort: "updated",
-        per_page: 10,
-      });
-    }
-
-    return repos.data.map((repo) => ({
-      id: repo.id.toString(),
-      name: repo.name,
-      fullName: repo.full_name,
-      description: repo.description,
-      private: repo.private,
-      url: repo.html_url,
-    }));
-  }
-}
-</file>
 
 <file path="apps/api/prisma/migrations/20260104234343_init/migration.sql">
 -- CreateTable
@@ -401,6 +306,19 @@ ALTER TABLE "task" ADD CONSTRAINT "task_projectId_fkey" FOREIGN KEY ("projectId"
 ALTER TABLE "task" ADD CONSTRAINT "task_assignedToUserId_fkey" FOREIGN KEY ("assignedToUserId") REFERENCES "user"("id") ON DELETE SET NULL ON UPDATE CASCADE;
 </file>
 
+<file path="apps/api/prisma/migrations/20260106000000_add_github_fields/migration.sql">
+-- AlterTable
+ALTER TABLE "project" ADD COLUMN "githubRepoId" TEXT;
+ALTER TABLE "project" ADD COLUMN "githubRepoName" TEXT;
+</file>
+
+<file path="apps/api/prisma/migrations/20260106215046_add_github_fields/migration.sql">
+-- AlterTable
+ALTER TABLE "task" ADD COLUMN     "branchName" TEXT,
+ADD COLUMN     "prNumber" INTEGER,
+ADD COLUMN     "prStatus" TEXT;
+</file>
+
 <file path="apps/api/prisma/migrations/migration_lock.toml">
 # Please do not edit this file manually
 # It should be added in your version-control system (i.e. Git)
@@ -466,66 +384,109 @@ export const authController = new Elysia({ prefix: "/api/auth" }).all(
 );
 </file>
 
-<file path="apps/api/src/modules/projects/projects.controller.ts">
+<file path="apps/api/src/modules/github/github.controller.ts">
 import { Elysia, t } from "elysia";
 import { auth } from "../auth/auth";
-import { ProjectsService } from "./projects.service";
+import { GithubService } from "./github.service";
 
-export const projectsController = new Elysia({ prefix: "/api/projects" })
-  .get("/", async ({ request, set }) => {
-    const session = await auth.api.getSession({
-      headers: request.headers,
-    });
-
+export const githubController = new Elysia({ prefix: "/api/github" })
+  .get("/owners", async ({ request, set }) => {
+    const session = await auth.api.getSession({ headers: request.headers });
     if (!session) {
       set.status = 401;
-      return "Unauthorized";
+      throw new Error("Unauthorized");
     }
-    return ProjectsService.getMyProjects(session.user.id);
+    return GithubService.getOwners(session.user.id);
   })
-  .post("/", async ({ request, body, set }) => {
-    const session = await auth.api.getSession({
-      headers: request.headers,
-    });
-
+  .get("/repos/:owner", async ({ request, params, set }) => {
+    const session = await auth.api.getSession({ headers: request.headers });
     if (!session) {
       set.status = 401;
-      return "Unauthorized";
+      throw new Error("Unauthorized");
     }
-
-    const { title, description, githubRepoId, githubRepoName } = body as {
-      title: string;
-      description?: string;
-      githubRepoId: string;
-      githubRepoName: string;
-    };
-
-    if (!title) {
-      set.status = 400;
-      return "Title is required";
-    }
-
-    if (!githubRepoId || !githubRepoName) {
-      set.status = 400;
-      return "Github Repository is required";
-    }
-
-    try {
-      return await ProjectsService.createProject(session.user.id, {
-        title,
-        description,
-        githubRepoId,
-        githubRepoName,
-      });
-    } catch (e: any) {
-      // TODO: bad practice but let's keep it for now :(
-      if (e.message === "Project already exists for this repository") {
-        set.status = 409;
-        return e.message;
-      }
-      throw e;
-    }
+    return GithubService.getRepos(session.user.id, params.owner);
   });
+</file>
+
+<file path="apps/api/src/modules/github/github.service.ts">
+import { resolveProjectReferencePath } from "typescript";
+import { prisma } from "../../common/db";
+import { Octokit } from "octokit";
+
+export class GithubService {
+  private static async getAccessToken(userId: string) {
+    const account = await prisma.account.findFirst({
+      where: {
+        userId,
+        providerId: "github",
+      },
+    });
+
+    if (!account || !account.accessToken) {
+      throw new Error("No Github account linked");
+    }
+
+    return account.accessToken;
+  }
+
+  static async getOwners(userId: string) {
+    const token = await this.getAccessToken(userId);
+    const octokit = new Octokit({ auth: token });
+
+    const [user, orgs] = await Promise.all([
+      octokit.rest.users.getAuthenticated(),
+      octokit.rest.orgs.listForAuthenticatedUser(),
+    ]);
+
+    return [
+      {
+        login: user.data.login,
+        avatarUrl: user.data.avatar_url,
+        type: "User",
+        id: user.data.id,
+      },
+      ...orgs.data.map((org) => ({
+        login: org.login,
+        avatarUrl: org.avatar_url,
+        type: "Organization",
+        id: org.id,
+      })),
+    ];
+  }
+
+  static async getRepos(userId: string, owner: string) {
+    const token = await this.getAccessToken(userId);
+    const octokit = new Octokit({ auth: token });
+
+    const user = await octokit.rest.users.getAuthenticated();
+
+    let repos;
+
+    if (owner === user.data.login) {
+      repos = await octokit.rest.repos.listForAuthenticatedUser({
+        visibility: "all",
+        sort: "updated",
+        per_page: 100,
+        affiliation: "owner,collaborator,organization_member",
+      });
+    } else {
+      repos = await octokit.rest.repos.listForOrg({
+        org: owner,
+        sort: "updated",
+        per_page: 10,
+      });
+    }
+
+    return repos.data.map((repo) => ({
+      id: repo.id.toString(),
+      name: repo.name,
+      fullName: repo.full_name,
+      description: repo.description,
+      private: repo.private,
+      url: repo.html_url,
+    }));
+  }
+}
 </file>
 
 <file path="apps/api/src/modules/status/status.controller.ts">
@@ -630,36 +591,6 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 .DS_Store
 </file>
 
-<file path="apps/api/package.json">
-{
-  "name": "@tandem/api",
-  "version": "0.0.0",
-  "module": "src/index.ts",
-  "type": "module",
-  "private": true,
-  "scripts": {
-    "dev": "bun run --watch src/index.ts",
-    "build": "bun build src/index.ts --outdir dist --target bun"
-  },
-  "dependencies": {
-    "@elysiajs/cors": "latest",
-    "@prisma/client": "5",
-    "better-auth": "^1.4.10",
-    "elysia": "latest",
-    "octokit": "^5.0.5"
-  },
-  "devDependencies": {
-    "bun-types": "latest",
-    "prisma": "5"
-  },
-  "peerDependencies": {
-    "typescript": "^5"
-  },
-  "main": "src/index.ts",
-  "types": "src/index.ts"
-}
-</file>
-
 <file path="apps/api/README.md">
 # api
 
@@ -718,51 +649,48 @@ This project was created using `bun init` in bun v1.3.5. [Bun](https://bun.com) 
 <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 394 80"><path fill="#000" d="M262 0h68.5v12.7h-27.2v66.6h-13.6V12.7H262V0ZM149 0v12.7H94v20.4h44.3v12.6H94v21h55v12.6H80.5V0h68.7zm34.3 0h-17.8l63.8 79.4h17.9l-32-39.7 32-39.6h-17.9l-23 28.6-23-28.6zm18.3 56.7-9-11-27.1 33.7h17.8l18.3-22.7z"/><path fill="#000" d="M81 79.3 17 0H0v79.3h13.6V17l50.2 62.3H81Zm252.6-.4c-1 0-1.8-.4-2.5-1s-1.1-1.6-1.1-2.6.3-1.8 1-2.5 1.6-1 2.6-1 1.8.3 2.5 1a3.4 3.4 0 0 1 .6 4.3 3.7 3.7 0 0 1-3 1.8zm23.2-33.5h6v23.3c0 2.1-.4 4-1.3 5.5a9.1 9.1 0 0 1-3.8 3.5c-1.6.8-3.5 1.3-5.7 1.3-2 0-3.7-.4-5.3-1s-2.8-1.8-3.7-3.2c-.9-1.3-1.4-3-1.4-5h6c.1.8.3 1.6.7 2.2s1 1.2 1.6 1.5c.7.4 1.5.5 2.4.5 1 0 1.8-.2 2.4-.6a4 4 0 0 0 1.6-1.8c.3-.8.5-1.8.5-3V45.5zm30.9 9.1a4.4 4.4 0 0 0-2-3.3 7.5 7.5 0 0 0-4.3-1.1c-1.3 0-2.4.2-3.3.5-.9.4-1.6 1-2 1.6a3.5 3.5 0 0 0-.3 4c.3.5.7.9 1.3 1.2l1.8 1 2 .5 3.2.8c1.3.3 2.5.7 3.7 1.2a13 13 0 0 1 3.2 1.8 8.1 8.1 0 0 1 3 6.5c0 2-.5 3.7-1.5 5.1a10 10 0 0 1-4.4 3.5c-1.8.8-4.1 1.2-6.8 1.2-2.6 0-4.9-.4-6.8-1.2-2-.8-3.4-2-4.5-3.5a10 10 0 0 1-1.7-5.6h6a5 5 0 0 0 3.5 4.6c1 .4 2.2.6 3.4.6 1.3 0 2.5-.2 3.5-.6 1-.4 1.8-1 2.4-1.7a4 4 0 0 0 .8-2.4c0-.9-.2-1.6-.7-2.2a11 11 0 0 0-2.1-1.4l-3.2-1-3.8-1c-2.8-.7-5-1.7-6.6-3.2a7.2 7.2 0 0 1-2.4-5.7 8 8 0 0 1 1.7-5 10 10 0 0 1 4.3-3.5c2-.8 4-1.2 6.4-1.2 2.3 0 4.4.4 6.2 1.2 1.8.8 3.2 2 4.3 3.4 1 1.4 1.5 3 1.5 5h-5.8z"/></svg>
 </file>
 
-<file path="apps/web/src/app/dashboard/_components/create-project-dialog.tsx">
+<file path="apps/web/src/app/dashboard/_components/project-card-skeleton.tsx">
+import { Card, CardHeader, CardFooter } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
+
+export function ProjectCardSkeleton() {
+  return (
+    <Card className="flex flex-col justify-between min-h-[160px]">
+      <CardHeader>
+        <div className="flex flex-col gap-2">
+          <Skeleton className="h-5 w-3/4" />
+          <div className="flex items-center gap-1 5 mt-1">
+            <Skeleton className="h-3 w-3 rounded-full" />
+            <Skeleton className="h-3 w-24" />
+          </div>
+        </div>
+
+        <div className="mt-2">
+          <Skeleton className="h-3 w-full" />
+          <Skeleton className="h-3 w-5/6 mt-1" />
+        </div>
+      </CardHeader>
+      <CardFooter>
+        <Skeleton className="h-3 w-16" />
+      </CardFooter>
+    </Card>
+  );
+}
+</file>
+
+<file path="apps/web/src/app/dashboard/_hooks/use-github.ts">
 "use client";
 
-import { useState, useEffect } from "react";
-import { Button } from "@/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import { Plus, Github, Loader2 } from "lucide-react";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { api } from "@/lib/eden";
-import { Skeleton } from "@/components/ui/skeleton";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { useQuery } from "@tanstack/react-query";
 
-interface CreateProjectDialogProps {
-  onCreate: (project: {
-    title: string;
-    description: string;
-    githubRepoId: string;
-    githubRepoName: string;
-  }) => Promise<void>;
-}
-
-interface Owner {
+export interface Owner {
   login: string;
   avatarUrl: string;
   type: string;
 }
 
-interface Repo {
+export interface Repo {
   id: string;
   name: string;
   fullName: string;
@@ -770,448 +698,30 @@ interface Repo {
   private: boolean;
 }
 
-export function CreateProjectDialog({ onCreate }: CreateProjectDialogProps) {
-  const [open, setOpen] = useState(false);
-  const [title, setTitle] = useState("");
-  const [description, setDescription] = useState("");
-  const [isSubmitting, setIsSubmitting] = useState(false);
-
-  const [owners, setOwners] = useState<Owner[]>([]);
-  const [loadingOwners, setLoadingOwners] = useState(false);
-  const [selectedOwner, setSelectedOwner] = useState<string>("");
-
-  const [repos, setRepos] = useState<Repo[]>([]);
-  const [loadingRepos, setLoadingRepos] = useState(false);
-  const [selectedRepoId, setSelectedRepoId] = useState<string>("");
-  const [selectedRepo, setSelectedRepo] = useState<Repo | null>(null);
-
-  useEffect(() => {
-    if (open) {
-      const fetchOwners = async () => {
-        setLoadingOwners(true);
-        try {
-          const { data } = await api.api.github.owners.get();
-          if (data && Array.isArray(data)) {
-            setOwners(data);
-            if (data.length > 0) setSelectedOwner(data[0].login);
-          } else {
-            setOwners([]);
-          }
-        } catch (e) {
-          console.error("Failed to fetch owners", e);
-          setOwners([]);
-        } finally {
-          setLoadingOwners(false);
-        }
-      };
-      fetchOwners();
-    }
-  }, [open]);
-
-  useEffect(() => {
-    if (selectedOwner) {
-      const fetchRepos = async () => {
-        setLoadingRepos(true);
-        setRepos([]);
-        setSelectedRepoId("");
-        setSelectedRepo(null);
-        try {
-          const { data } = await api.api.github.repos[selectedOwner].get();
-          if (data && Array.isArray(data)) {
-            setRepos(data);
-          } else {
-            setRepos([]);
-          }
-        } catch (e) {
-          console.error("Failed to fetch repos", e);
-          setRepos([]);
-        } finally {
-          setLoadingRepos(false);
-        }
-      };
-      fetchRepos();
-    }
-  }, [selectedOwner]);
-
-  const handleRepoChange = (repoId: string) => {
-    const repo = repos.find((r) => r.id === repoId);
-    if (repo) {
-      setSelectedRepoId(repoId);
-      setSelectedRepo(repo);
-      setTitle(repo.name);
-      setDescription(repo.description || "");
-    }
-  };
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!selectedRepo) return;
-
-    setIsSubmitting(true);
-
-    try {
-      await onCreate({
-        title,
-        description,
-        githubRepoId: selectedRepo.id,
-        githubRepoName: selectedRepo.fullName,
-      });
-      setOpen(false);
-      setTitle("");
-      setDescription("");
-      setSelectedRepoId("");
-      setSelectedRepo(null);
-    } catch (e) {
-      console.error(e);
-      alert(
-        "Failed to create project. This repository might already be linked."
-      );
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        <Button className="gap-2">
-          <Plus className="h-4 w-4" />
-          Create Project
-        </Button>
-      </DialogTrigger>
-      <DialogContent className="sm:max-w-[450px]">
-        <form onSubmit={handleSubmit}>
-          <DialogHeader>
-            <DialogTitle>Link Repository</DialogTitle>
-            <DialogDescription>
-              Select a GitHub repository to track tasks.
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="grid gap-5 py-5">
-            <div className="grid gap-2">
-              <Label>Owner</Label>
-              {loadingOwners ? (
-                <Skeleton className="h-10 w-full" />
-              ) : (
-                <Select value={selectedOwner} onValueChange={setSelectedOwner}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select owner" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {owners?.map((owner) => (
-                      <SelectItem key={owner.login} value={owner.login}>
-                        <div className="flex items-center gap-2">
-                          <Avatar className="h-5 w-5">
-                            <AvatarImage src={owner.avatarUrl} />
-                            <AvatarFallback>
-                              {owner.login.slice(0, 1)}
-                            </AvatarFallback>
-                          </Avatar>
-                          <span>{owner.login}</span>
-                          <span className="text-xs text-muted-foreground ml-auto uppercase tracking-wider">
-                            {owner.type}
-                          </span>
-                        </div>
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              )}
-            </div>
-
-            <div className="grid gap-2">
-              <Label>Repository</Label>
-              {loadingRepos ? (
-                <div className="space-y-2">
-                  <Skeleton className="h-10 w-full" />
-                </div>
-              ) : (
-                <Select
-                  value={selectedRepoId}
-                  onValueChange={handleRepoChange}
-                  disabled={!selectedOwner}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select a repository" />
-                  </SelectTrigger>
-                  <SelectContent className="max-h-[200px]">
-                    {repos.length === 0 ? (
-                      <div className="p-2 text-xs text-muted-foreground text-center">
-                        No repositories found.
-                      </div>
-                    ) : (
-                      repos.map((repo) => (
-                        <SelectItem key={repo.id} value={repo.id}>
-                          <div className="flex items-center gap-2 truncate">
-                            {repo.private ? (
-                              <span className="text-xs border rounded px-1 text-muted-foreground">
-                                Pv
-                              </span>
-                            ) : (
-                              <span className="text-xs border rounded px-1 text-muted-foreground">
-                                Pu
-                              </span>
-                            )}
-                            <span className="truncate">{repo.name}</span>
-                          </div>
-                        </SelectItem>
-                      ))
-                    )}
-                  </SelectContent>
-                </Select>
-              )}
-            </div>
-
-            {selectedRepo && (
-              <div className="space-y-4 pt-2 border-t">
-                <div className="grid gap-2">
-                  <Label htmlFor="title">Project Title</Label>
-                  <Input
-                    id="title"
-                    value={title}
-                    onChange={(e) => setTitle(e.target.value)}
-                    required
-                  />
-                </div>
-                <div className="grid gap-2">
-                  <Label htmlFor="description">Description</Label>
-                  <Textarea
-                    id="description"
-                    value={description}
-                    onChange={(e) => setDescription(e.target.value)}
-                    className="min-h-[80px]"
-                  />
-                </div>
-              </div>
-            )}
-          </div>
-
-          <DialogFooter>
-            <Button type="submit" disabled={isSubmitting || !selectedRepo}>
-              {isSubmitting ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Linking...
-                </>
-              ) : (
-                <>
-                  <Github className="mr-2 h-4 w-4" />
-                  Create Project
-                </>
-              )}
-            </Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
-  );
-}
-</file>
-
-<file path="apps/web/src/app/dashboard/_components/project-card.tsx">
-"use client";
-
-import {
-  Card,
-  CardHeader,
-  CardTitle,
-  CardDescription,
-  CardFooter,
-} from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Github } from "lucide-react";
-
-const timeAgo = (date: string | Date) => {
-  const d = new Date(date);
-  if (isNaN(d.getTime())) return "Just Now";
-  return d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
-};
-
-interface ProjectCardProps {
-  title: string;
-  description: string | null;
-  createdAt: string | Date;
-  githubRepoName?: string | null;
-  isOptimistic?: boolean;
+export function useGithubOwners(enabled: boolean = true) {
+  return useQuery({
+    queryKey: ["github", "owners"],
+    queryFn: async () => {
+      const { data, error } = await api.api.github.owners.get();
+      if (error) throw error;
+      return data as Owner[];
+    },
+    enabled,
+  });
 }
 
-export function ProjectCard({
-  title,
-  description,
-  createdAt,
-  githubRepoName,
-  isOptimistic,
-}: ProjectCardProps) {
-  return (
-    <Card
-      className={`group flex flex-col justify-between transition-all hover:border-primary/50 ${isOptimistic ? "opacity-70 animate-pulse" : ""}`}
-    >
-      <CardHeader>
-        <div className="flex items-start justify-between">
-          <CardTitle className="line-clamp-1 text-base">{title}</CardTitle>
-          {isOptimistic && (
-            <Badge variant="secondary" className="text-[10px] h-4">
-              Creating
-            </Badge>
-          )}
-        </div>
+export function useGithubRepos(owner: string, enabled: boolean = true) {
+  return useQuery({
+    queryKey: ["github", "repos", owner],
+    queryFn: async () => {
+      if (!owner) return [];
 
-        {githubRepoName && (
-          <div className="flex items-center gap-1.5 text-xs text-muted-foreground/80 font-mono mt-1">
-            <Github className="h-3 w-3" />
-            <span className="truncate">{githubRepoName}</span>
-          </div>
-        )}
-
-        <CardDescription className="line-clamp-2 min-h-[2.5em] mt-2">
-          {description || "No description provided."}
-        </CardDescription>
-      </CardHeader>
-      <CardFooter className="text-[10px] text-muted-foreground">
-        Created {timeAgo(createdAt)}
-      </CardFooter>
-    </Card>
-  );
-}
-</file>
-
-<file path="apps/web/src/app/dashboard/_hooks/use-project.ts">
-"use client";
-
-import { useState, useEffect, useCallback } from "react";
-import { api } from "@/lib/eden";
-
-export interface Project {
-  id: string;
-  title: string;
-  description: string | null;
-  createdAt: string | Date;
-}
-
-export function useProjects() {
-  const [projects, setProjects] = useState<Project[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  const fetchProjects = useCallback(async () => {
-    try {
-      const { data, error } = await api.api.projects.get();
-      if (data && !error) {
-        setProjects(data as unknown as Project[]);
-      }
-    } catch (e) {
-      console.error("Failed to fetch projects", e);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    fetchProjects();
-  }, [fetchProjects]);
-
-  return {
-    projects,
-    setProjects,
-    loading,
-    refresh: fetchProjects,
-  };
-}
-</file>
-
-<file path="apps/web/src/app/dashboard/page.tsx">
-"use client";
-
-import { useOptimistic, startTransition } from "react";
-import { api } from "@/lib/eden";
-import { useProjects, type Project } from "./_hooks/use-project";
-import { CreateProjectDialog } from "./_components/create-project-dialog";
-import { ProjectCard } from "./_components/project-card";
-import { Loader2 } from "lucide-react";
-
-export default function DashboardPage() {
-  const { projects, setProjects, loading } = useProjects();
-
-  const [optimisticProjects, addOptimisticProject] = useOptimistic(
-    projects,
-    (state: Project[], newProject: Project) => [newProject, ...state]
-  );
-
-  const handleCreateProject = async (data: {
-    title: string;
-    description: string;
-    githubRepoId: string;
-    githubRepoName: string;
-  }) => {
-    const tempId = `temp-${Date.now()}`;
-    const newProject: Project = {
-      id: tempId,
-      title: data.title,
-      description: data.description,
-      githubRepoName: data.githubRepoName,
-      createdAt: new Date(),
-    };
-
-    startTransition(() => {
-      addOptimisticProject(newProject);
-    });
-
-    try {
-      const { data: createdProject, error } = await api.api.projects.post(data);
-
-      if (createdProject && !error) {
-        setProjects((prev) => [createdProject as unknown as Project, ...prev]);
-      } else {
-        console.error("Failed to create project:", error);
-      }
-    } catch (error) {
-      console.error("Network error:", error);
-    }
-  };
-
-  return (
-    <div className="container mx-auto max-w-6xl space-y-8 p-4">
-      <div className="flex items-center justify-between border-b pb-6">
-        <div>
-          <h1 className="text-2xl font-medium tracking-tight">Projects</h1>
-          <p className="text-sm text-muted-foreground mt-1">
-            Manage and track your ongoing work.
-          </p>
-        </div>
-        <CreateProjectDialog onCreate={handleCreateProject} />
-      </div>
-
-      {loading ? (
-        <div className="flex h-64 items-center justify-center">
-          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-          {optimisticProjects.length === 0 ? (
-            <div className="col-span-full flex h-64 flex-col items-center justify-center rounded-lg border border-dashed text-center">
-              <p className="text-sm text-muted-foreground">
-                No projects found.
-              </p>
-              <p className="text-xs text-muted-foreground/60">
-                Link a GitHub repository to get started.
-              </p>
-            </div>
-          ) : (
-            optimisticProjects.map((project) => (
-              <ProjectCard
-                key={project.id}
-                title={project.title}
-                description={project.description}
-                createdAt={project.createdAt}
-                githubRepoName={(project as any).githubRepoName}
-                isOptimistic={project.id.startsWith("temp-")}
-              />
-            ))
-          )}
-        </div>
-      )}
-    </div>
-  );
+      const { data, error } = await api.api.github.repos[owner].get();
+      if (error) throw error;
+      return data as Repo[];
+    },
+    enabled: enabled && !!owner,
+  });
 }
 </file>
 
@@ -2016,6 +1526,195 @@ export {
   ComboboxTrigger,
   ComboboxValue,
   useComboboxAnchor,
+}
+</file>
+
+<file path="apps/web/src/components/ui/command.tsx">
+"use client"
+
+import * as React from "react"
+import { Command as CommandPrimitive } from "cmdk"
+
+import { cn } from "@/lib/utils"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import {
+  InputGroup,
+  InputGroupAddon,
+} from "@/components/ui/input-group"
+import { IconSearch, IconCheck } from "@tabler/icons-react"
+
+function Command({
+  className,
+  ...props
+}: React.ComponentProps<typeof CommandPrimitive>) {
+  return (
+    <CommandPrimitive
+      data-slot="command"
+      className={cn(
+        "bg-popover text-popover-foreground rounded-xl p-1 flex size-full flex-col overflow-hidden",
+        className
+      )}
+      {...props}
+    />
+  )
+}
+
+function CommandDialog({
+  title = "Command Palette",
+  description = "Search for a command to run...",
+  children,
+  className,
+  showCloseButton = false,
+  ...props
+}: React.ComponentProps<typeof Dialog> & {
+  title?: string
+  description?: string
+  className?: string
+  showCloseButton?: boolean
+}) {
+  return (
+    <Dialog {...props}>
+      <DialogHeader className="sr-only">
+        <DialogTitle>{title}</DialogTitle>
+        <DialogDescription>{description}</DialogDescription>
+      </DialogHeader>
+      <DialogContent
+        className={cn("rounded-xl! p-0 overflow-hidden p-0", className)}
+        showCloseButton={showCloseButton}
+      >
+        {children}
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+function CommandInput({
+  className,
+  ...props
+}: React.ComponentProps<typeof CommandPrimitive.Input>) {
+  return (
+    <div data-slot="command-input-wrapper" className="p-1 pb-0">
+      <InputGroup className="bg-input/20 dark:bg-input/30 h-8!">
+        <CommandPrimitive.Input
+          data-slot="command-input"
+          className={cn(
+            "w-full text-xs/relaxed outline-hidden disabled:cursor-not-allowed disabled:opacity-50",
+            className
+          )}
+          {...props}
+        />
+        <InputGroupAddon>
+          <IconSearch className="size-3.5 shrink-0 opacity-50" />
+        </InputGroupAddon>
+      </InputGroup>
+    </div>
+  )
+}
+
+function CommandList({
+  className,
+  ...props
+}: React.ComponentProps<typeof CommandPrimitive.List>) {
+  return (
+    <CommandPrimitive.List
+      data-slot="command-list"
+      className={cn(
+        "no-scrollbar max-h-72 scroll-py-1 outline-none overflow-x-hidden overflow-y-auto",
+        className
+      )}
+      {...props}
+    />
+  )
+}
+
+function CommandEmpty({
+  className,
+  ...props
+}: React.ComponentProps<typeof CommandPrimitive.Empty>) {
+  return (
+    <CommandPrimitive.Empty
+      data-slot="command-empty"
+      className={cn("py-6 text-center text-xs/relaxed", className)}
+      {...props}
+    />
+  )
+}
+
+function CommandGroup({
+  className,
+  ...props
+}: React.ComponentProps<typeof CommandPrimitive.Group>) {
+  return (
+    <CommandPrimitive.Group
+      data-slot="command-group"
+      className={cn("text-foreground [&_[cmdk-group-heading]]:text-muted-foreground overflow-hidden p-1 [&_[cmdk-group-heading]]:px-2.5 [&_[cmdk-group-heading]]:py-1.5 [&_[cmdk-group-heading]]:text-xs [&_[cmdk-group-heading]]:font-medium", className)}
+      {...props}
+    />
+  )
+}
+
+function CommandSeparator({
+  className,
+  ...props
+}: React.ComponentProps<typeof CommandPrimitive.Separator>) {
+  return (
+    <CommandPrimitive.Separator
+      data-slot="command-separator"
+      className={cn("bg-border/50 -mx-1 my-1 h-px", className)}
+      {...props}
+    />
+  )
+}
+
+function CommandItem({
+  className,
+  children,
+  ...props
+}: React.ComponentProps<typeof CommandPrimitive.Item>) {
+  return (
+    <CommandPrimitive.Item
+      data-slot="command-item"
+      className={cn(
+        "data-selected:bg-muted data-selected:text-foreground data-selected:*:[svg]:text-foreground relative flex min-h-7 cursor-default items-center gap-2 rounded-md px-2.5 py-1.5 text-xs/relaxed outline-hidden select-none [&_svg:not([class*='size-'])]:size-3.5 [[data-slot=dialog-content]_&]:rounded-md group/command-item data-[disabled=true]:pointer-events-none data-[disabled=true]:opacity-50 [&_svg]:pointer-events-none [&_svg]:shrink-0",
+        className
+      )}
+      {...props}
+    >
+      {children}
+      <IconCheck className="ml-auto opacity-0 group-has-[[data-slot=command-shortcut]]/command-item:hidden group-data-[checked=true]/command-item:opacity-100" />
+    </CommandPrimitive.Item>
+  )
+}
+
+function CommandShortcut({
+  className,
+  ...props
+}: React.ComponentProps<"span">) {
+  return (
+    <span
+      data-slot="command-shortcut"
+      className={cn("text-muted-foreground group-data-selected/command-item:text-foreground ml-auto text-[0.625rem] tracking-widest", className)}
+      {...props}
+    />
+  )
+}
+
+export {
+  Command,
+  CommandDialog,
+  CommandInput,
+  CommandList,
+  CommandEmpty,
+  CommandGroup,
+  CommandItem,
+  CommandShortcut,
+  CommandSeparator,
 }
 </file>
 
@@ -2864,6 +2563,98 @@ function Label({
 export { Label }
 </file>
 
+<file path="apps/web/src/components/ui/popover.tsx">
+"use client"
+
+import * as React from "react"
+import { Popover as PopoverPrimitive } from "radix-ui"
+
+import { cn } from "@/lib/utils"
+
+function Popover({
+  ...props
+}: React.ComponentProps<typeof PopoverPrimitive.Root>) {
+  return <PopoverPrimitive.Root data-slot="popover" {...props} />
+}
+
+function PopoverTrigger({
+  ...props
+}: React.ComponentProps<typeof PopoverPrimitive.Trigger>) {
+  return <PopoverPrimitive.Trigger data-slot="popover-trigger" {...props} />
+}
+
+function PopoverContent({
+  className,
+  align = "center",
+  sideOffset = 4,
+  ...props
+}: React.ComponentProps<typeof PopoverPrimitive.Content>) {
+  return (
+    <PopoverPrimitive.Portal>
+      <PopoverPrimitive.Content
+        data-slot="popover-content"
+        align={align}
+        sideOffset={sideOffset}
+        className={cn(
+          "bg-popover text-popover-foreground data-open:animate-in data-closed:animate-out data-closed:fade-out-0 data-open:fade-in-0 data-closed:zoom-out-95 data-open:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 ring-foreground/10 flex flex-col gap-4 rounded-lg p-2.5 text-xs shadow-md ring-1 duration-100 z-50 w-72 origin-(--radix-popover-content-transform-origin) outline-hidden",
+          className
+        )}
+        {...props}
+      />
+    </PopoverPrimitive.Portal>
+  )
+}
+
+function PopoverAnchor({
+  ...props
+}: React.ComponentProps<typeof PopoverPrimitive.Anchor>) {
+  return <PopoverPrimitive.Anchor data-slot="popover-anchor" {...props} />
+}
+
+function PopoverHeader({ className, ...props }: React.ComponentProps<"div">) {
+  return (
+    <div
+      data-slot="popover-header"
+      className={cn("flex flex-col gap-1 text-xs", className)}
+      {...props}
+    />
+  )
+}
+
+function PopoverTitle({ className, ...props }: React.ComponentProps<"h2">) {
+  return (
+    <div
+      data-slot="popover-title"
+      className={cn("text-sm font-medium", className)}
+      {...props}
+    />
+  )
+}
+
+function PopoverDescription({
+  className,
+  ...props
+}: React.ComponentProps<"p">) {
+  return (
+    <p
+      data-slot="popover-description"
+      className={cn("text-muted-foreground", className)}
+      {...props}
+    />
+  )
+}
+
+export {
+  Popover,
+  PopoverAnchor,
+  PopoverContent,
+  PopoverDescription,
+  PopoverHeader,
+  PopoverTitle,
+  PopoverTrigger,
+}
+</file>
+
 <file path="apps/web/src/components/ui/select.tsx">
 "use client"
 
@@ -3217,6 +3008,1014 @@ export {
   SheetFooter,
   SheetTitle,
   SheetDescription,
+}
+</file>
+
+<file path="apps/web/src/components/ui/skeleton.tsx">
+import { cn } from "@/lib/utils"
+
+function Skeleton({ className, ...props }: React.ComponentProps<"div">) {
+  return (
+    <div
+      data-slot="skeleton"
+      className={cn("bg-muted rounded-md animate-pulse", className)}
+      {...props}
+    />
+  )
+}
+
+export { Skeleton }
+</file>
+
+<file path="apps/web/src/components/ui/sonner.tsx">
+"use client"
+
+import { useTheme } from "next-themes"
+import { Toaster as Sonner, type ToasterProps } from "sonner"
+import { IconCircleCheck, IconInfoCircle, IconAlertTriangle, IconAlertOctagon, IconLoader } from "@tabler/icons-react"
+
+const Toaster = ({ ...props }: ToasterProps) => {
+  const { theme = "system" } = useTheme()
+
+  return (
+    <Sonner
+      theme={theme as ToasterProps["theme"]}
+      className="toaster group"
+      icons={{
+        success: (
+          <IconCircleCheck className="size-4" />
+        ),
+        info: (
+          <IconInfoCircle className="size-4" />
+        ),
+        warning: (
+          <IconAlertTriangle className="size-4" />
+        ),
+        error: (
+          <IconAlertOctagon className="size-4" />
+        ),
+        loading: (
+          <IconLoader className="size-4 animate-spin" />
+        ),
+      }}
+      style={
+        {
+          "--normal-bg": "var(--popover)",
+          "--normal-text": "var(--popover-foreground)",
+          "--normal-border": "var(--border)",
+          "--border-radius": "var(--radius)",
+        } as React.CSSProperties
+      }
+      toastOptions={{
+        classNames: {
+          toast: "cn-toast",
+        },
+      }}
+      {...props}
+    />
+  )
+}
+
+export { Toaster }
+</file>
+
+<file path="apps/web/src/components/ui/textarea.tsx">
+import * as React from "react"
+
+import { cn } from "@/lib/utils"
+
+function Textarea({ className, ...props }: React.ComponentProps<"textarea">) {
+  return (
+    <textarea
+      data-slot="textarea"
+      className={cn(
+        "border-input bg-input/20 dark:bg-input/30 focus-visible:border-ring focus-visible:ring-ring/30 aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive dark:aria-invalid:border-destructive/50 resize-none rounded-md border px-2 py-2 text-sm transition-colors focus-visible:ring-[2px] aria-invalid:ring-[2px] md:text-xs/relaxed placeholder:text-muted-foreground flex field-sizing-content min-h-16 w-full outline-none disabled:cursor-not-allowed disabled:opacity-50",
+        className
+      )}
+      {...props}
+    />
+  )
+}
+
+export { Textarea }
+</file>
+
+<file path="apps/web/src/components/ui/tooltip.tsx">
+"use client"
+
+import * as React from "react"
+import { Tooltip as TooltipPrimitive } from "radix-ui"
+
+import { cn } from "@/lib/utils"
+
+function TooltipProvider({
+  delayDuration = 0,
+  ...props
+}: React.ComponentProps<typeof TooltipPrimitive.Provider>) {
+  return (
+    <TooltipPrimitive.Provider
+      data-slot="tooltip-provider"
+      delayDuration={delayDuration}
+      {...props}
+    />
+  )
+}
+
+function Tooltip({
+  ...props
+}: React.ComponentProps<typeof TooltipPrimitive.Root>) {
+  return (
+    <TooltipProvider>
+      <TooltipPrimitive.Root data-slot="tooltip" {...props} />
+    </TooltipProvider>
+  )
+}
+
+function TooltipTrigger({
+  ...props
+}: React.ComponentProps<typeof TooltipPrimitive.Trigger>) {
+  return <TooltipPrimitive.Trigger data-slot="tooltip-trigger" {...props} />
+}
+
+function TooltipContent({
+  className,
+  sideOffset = 0,
+  children,
+  ...props
+}: React.ComponentProps<typeof TooltipPrimitive.Content>) {
+  return (
+    <TooltipPrimitive.Portal>
+      <TooltipPrimitive.Content
+        data-slot="tooltip-content"
+        sideOffset={sideOffset}
+        className={cn(
+          "data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-[state=delayed-open]:animate-in data-[state=delayed-open]:fade-in-0 data-[state=delayed-open]:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 rounded-md px-3 py-1.5 text-xs **:data-[slot=kbd]:rounded-md bg-foreground text-background z-50 w-fit max-w-xs origin-(--radix-tooltip-content-transform-origin)",
+          className
+        )}
+        {...props}
+      >
+        {children}
+        <TooltipPrimitive.Arrow className="size-2.5 translate-y-[calc(-50%_-_2px)] rotate-45 rounded-[2px] bg-foreground fill-foreground z-50 translate-y-[calc(-50%_-_2px)]" />
+      </TooltipPrimitive.Content>
+    </TooltipPrimitive.Portal>
+  )
+}
+
+export { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger }
+</file>
+
+<file path="apps/web/src/components/providers.tsx">
+"use client";
+
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { useState, type ReactNode } from "react";
+
+export function Providers({ children }: { children: ReactNode }) {
+  const [queryClient] = useState(
+    () =>
+      new QueryClient({
+        defaultOptions: {
+          queries: {
+            staleTime: 60 * 1000,
+            retry: 1,
+          },
+        },
+      })
+  );
+
+  return (
+    <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+  );
+}
+</file>
+
+<file path="apps/web/src/hooks/use-mobile.ts">
+import * as React from "react"
+
+const MOBILE_BREAKPOINT = 768
+
+export function useIsMobile() {
+  const [isMobile, setIsMobile] = React.useState<boolean | undefined>(undefined)
+
+  React.useEffect(() => {
+    const mql = window.matchMedia(`(max-width: ${MOBILE_BREAKPOINT - 1}px)`)
+    const onChange = () => {
+      setIsMobile(window.innerWidth < MOBILE_BREAKPOINT)
+    }
+    mql.addEventListener("change", onChange)
+    setIsMobile(window.innerWidth < MOBILE_BREAKPOINT)
+    return () => mql.removeEventListener("change", onChange)
+  }, [])
+
+  return !!isMobile
+}
+</file>
+
+<file path="apps/web/src/lib/utils.ts">
+import { clsx, type ClassValue } from "clsx"
+import { twMerge } from "tailwind-merge"
+
+export function cn(...inputs: ClassValue[]) {
+  return twMerge(clsx(inputs))
+}
+</file>
+
+<file path="apps/web/components.json">
+{
+  "$schema": "https://ui.shadcn.com/schema.json",
+  "style": "radix-mira",
+  "rsc": true,
+  "tsx": true,
+  "tailwind": {
+    "config": "",
+    "css": "src/app/globals.css",
+    "baseColor": "stone",
+    "cssVariables": true,
+    "prefix": ""
+  },
+  "iconLibrary": "tabler",
+  "aliases": {
+    "components": "@/components",
+    "utils": "@/lib/utils",
+    "ui": "@/components/ui",
+    "lib": "@/lib",
+    "hooks": "@/hooks"
+  },
+  "menuColor": "default",
+  "menuAccent": "bold",
+  "registries": {}
+}
+</file>
+
+<file path="apps/web/eslint.config.mjs">
+import { defineConfig, globalIgnores } from "eslint/config";
+import nextVitals from "eslint-config-next/core-web-vitals";
+import nextTs from "eslint-config-next/typescript";
+
+const eslintConfig = defineConfig([
+  ...nextVitals,
+  ...nextTs,
+  // Override default ignores of eslint-config-next.
+  globalIgnores([
+    // Default ignores of eslint-config-next:
+    ".next/**",
+    "out/**",
+    "build/**",
+    "next-env.d.ts",
+  ]),
+]);
+
+export default eslintConfig;
+</file>
+
+<file path="apps/web/postcss.config.mjs">
+const config = {
+  plugins: {
+    "@tailwindcss/postcss": {},
+  },
+};
+
+export default config;
+</file>
+
+<file path="packages/eslint-config/base.js">
+import js from "@eslint/js";
+import eslintConfigPrettier from "eslint-config-prettier";
+import turboPlugin from "eslint-plugin-turbo";
+import tseslint from "typescript-eslint";
+import onlyWarn from "eslint-plugin-only-warn";
+
+/**
+ * A shared ESLint configuration for the repository.
+ *
+ * @type {import("eslint").Linter.Config[]}
+ * */
+export const config = [
+  js.configs.recommended,
+  eslintConfigPrettier,
+  ...tseslint.configs.recommended,
+  {
+    plugins: {
+      turbo: turboPlugin,
+    },
+    rules: {
+      "turbo/no-undeclared-env-vars": "warn",
+    },
+  },
+  {
+    plugins: {
+      onlyWarn,
+    },
+  },
+  {
+    ignores: ["dist/**"],
+  },
+];
+</file>
+
+<file path="packages/eslint-config/next.js">
+import js from "@eslint/js";
+import { globalIgnores } from "eslint/config";
+import eslintConfigPrettier from "eslint-config-prettier";
+import tseslint from "typescript-eslint";
+import pluginReactHooks from "eslint-plugin-react-hooks";
+import pluginReact from "eslint-plugin-react";
+import globals from "globals";
+import pluginNext from "@next/eslint-plugin-next";
+import { config as baseConfig } from "./base.js";
+
+/**
+ * A custom ESLint configuration for libraries that use Next.js.
+ *
+ * @type {import("eslint").Linter.Config[]}
+ * */
+export const nextJsConfig = [
+  ...baseConfig,
+  js.configs.recommended,
+  eslintConfigPrettier,
+  ...tseslint.configs.recommended,
+  globalIgnores([
+    // Default ignores of eslint-config-next:
+    ".next/**",
+    "out/**",
+    "build/**",
+    "next-env.d.ts",
+  ]),
+  {
+    ...pluginReact.configs.flat.recommended,
+    languageOptions: {
+      ...pluginReact.configs.flat.recommended.languageOptions,
+      globals: {
+        ...globals.serviceworker,
+      },
+    },
+  },
+  {
+    plugins: {
+      "@next/next": pluginNext,
+    },
+    rules: {
+      ...pluginNext.configs.recommended.rules,
+      ...pluginNext.configs["core-web-vitals"].rules,
+    },
+  },
+  {
+    plugins: {
+      "react-hooks": pluginReactHooks,
+    },
+    settings: { react: { version: "detect" } },
+    rules: {
+      ...pluginReactHooks.configs.recommended.rules,
+      // React scope no longer necessary with new JSX transform.
+      "react/react-in-jsx-scope": "off",
+    },
+  },
+];
+</file>
+
+<file path="packages/eslint-config/package.json">
+{
+  "name": "@repo/eslint-config",
+  "version": "0.0.0",
+  "type": "module",
+  "private": true,
+  "exports": {
+    "./base": "./base.js",
+    "./next-js": "./next.js",
+    "./react-internal": "./react-internal.js"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.1",
+    "@next/eslint-plugin-next": "^15.5.0",
+    "eslint": "^9.39.1",
+    "eslint-config-prettier": "^10.1.1",
+    "eslint-plugin-only-warn": "^1.1.0",
+    "eslint-plugin-react": "^7.37.5",
+    "eslint-plugin-react-hooks": "^5.2.0",
+    "eslint-plugin-turbo": "^2.7.1",
+    "globals": "^16.5.0",
+    "typescript": "^5.9.2",
+    "typescript-eslint": "^8.50.0"
+  }
+}
+</file>
+
+<file path="packages/eslint-config/react-internal.js">
+import js from "@eslint/js";
+import eslintConfigPrettier from "eslint-config-prettier";
+import tseslint from "typescript-eslint";
+import pluginReactHooks from "eslint-plugin-react-hooks";
+import pluginReact from "eslint-plugin-react";
+import globals from "globals";
+import { config as baseConfig } from "./base.js";
+
+/**
+ * A custom ESLint configuration for libraries that use React.
+ *
+ * @type {import("eslint").Linter.Config[]} */
+export const config = [
+  ...baseConfig,
+  js.configs.recommended,
+  eslintConfigPrettier,
+  ...tseslint.configs.recommended,
+  pluginReact.configs.flat.recommended,
+  {
+    languageOptions: {
+      ...pluginReact.configs.flat.recommended.languageOptions,
+      globals: {
+        ...globals.serviceworker,
+        ...globals.browser,
+      },
+    },
+  },
+  {
+    plugins: {
+      "react-hooks": pluginReactHooks,
+    },
+    settings: { react: { version: "detect" } },
+    rules: {
+      ...pluginReactHooks.configs.recommended.rules,
+      // React scope no longer necessary with new JSX transform.
+      "react/react-in-jsx-scope": "off",
+    },
+  },
+];
+</file>
+
+<file path="packages/eslint-config/README.md">
+# `@turbo/eslint-config`
+
+Collection of internal eslint configurations.
+</file>
+
+<file path="packages/typescript-config/base.json">
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+  "compilerOptions": {
+    "declaration": true,
+    "declarationMap": true,
+    "esModuleInterop": true,
+    "incremental": false,
+    "isolatedModules": true,
+    "lib": ["es2022", "DOM", "DOM.Iterable"],
+    "module": "NodeNext",
+    "moduleDetection": "force",
+    "moduleResolution": "NodeNext",
+    "noUncheckedIndexedAccess": true,
+    "resolveJsonModule": true,
+    "skipLibCheck": true,
+    "strict": true,
+    "target": "ES2022"
+  }
+}
+</file>
+
+<file path="packages/typescript-config/nextjs.json">
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+  "extends": "./base.json",
+  "compilerOptions": {
+    "plugins": [{ "name": "next" }],
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "allowJs": true,
+    "jsx": "preserve",
+    "noEmit": true
+  }
+}
+</file>
+
+<file path="packages/typescript-config/package.json">
+{
+  "name": "@repo/typescript-config",
+  "version": "0.0.0",
+  "private": true,
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  }
+}
+</file>
+
+<file path="packages/typescript-config/react-library.json">
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+  "extends": "./base.json",
+  "compilerOptions": {
+    "jsx": "react-jsx"
+  }
+}
+</file>
+
+<file path="packages/ui/src/button.tsx">
+"use client";
+
+import { ReactNode } from "react";
+
+interface ButtonProps {
+  children: ReactNode;
+  className?: string;
+  appName: string;
+}
+
+export const Button = ({ children, className, appName }: ButtonProps) => {
+  return (
+    <button
+      className={className}
+      onClick={() => alert(`Hello from your ${appName} app!`)}
+    >
+      {children}
+    </button>
+  );
+};
+</file>
+
+<file path="packages/ui/src/card.tsx">
+import { type JSX } from "react";
+
+export function Card({
+  className,
+  title,
+  children,
+  href,
+}: {
+  className?: string;
+  title: string;
+  children: React.ReactNode;
+  href: string;
+}): JSX.Element {
+  return (
+    <a
+      className={className}
+      href={`${href}?utm_source=create-turbo&utm_medium=basic&utm_campaign=create-turbo"`}
+      rel="noopener noreferrer"
+      target="_blank"
+    >
+      <h2>
+        {title} <span>-&gt;</span>
+      </h2>
+      <p>{children}</p>
+    </a>
+  );
+}
+</file>
+
+<file path="packages/ui/src/code.tsx">
+import { type JSX } from "react";
+
+export function Code({
+  children,
+  className,
+}: {
+  children: React.ReactNode;
+  className?: string;
+}): JSX.Element {
+  return <code className={className}>{children}</code>;
+}
+</file>
+
+<file path="packages/ui/eslint.config.mjs">
+import { config } from "@repo/eslint-config/react-internal";
+
+/** @type {import("eslint").Linter.Config} */
+export default config;
+</file>
+
+<file path="packages/ui/tsconfig.json">
+{
+  "extends": "@repo/typescript-config/react-library.json",
+  "compilerOptions": {
+    "outDir": "dist"
+  },
+  "include": ["src"],
+  "exclude": ["node_modules", "dist"]
+}
+</file>
+
+<file path=".npmrc">
+
+</file>
+
+<file path="docker-compose.yml">
+version: "3.8"
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: tandem_postgres
+    restart: always
+    environment:
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: tandem
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+volumes:
+  postgres_data:
+</file>
+
+<file path="turbo.json">
+{
+  "$schema": "https://turborepo.com/schema.json",
+  "ui": "tui",
+  "tasks": {
+    "build": {
+      "dependsOn": ["^build"],
+      "inputs": ["$TURBO_DEFAULT$", ".env*"],
+      "outputs": [".next/**", "!.next/cache/**"]
+    },
+    "lint": {
+      "dependsOn": ["^lint"]
+    },
+    "check-types": {
+      "dependsOn": ["^check-types"]
+    },
+    "dev": {
+      "cache": false,
+      "persistent": true
+    }
+  }
+}
+</file>
+
+<file path="apps/api/src/config/index.ts">
+export const config = {
+  env: process.env.NODE_ENV || "development",
+  port: process.env.PORT ? parseInt(process.env.PORT) : 3001,
+  app: {
+    name: "Tandem API",
+    version: "1.0.0",
+  },
+  cors: {
+    origin: "http://localhost:3000",
+  },
+};
+</file>
+
+<file path="apps/api/src/modules/projects/projects.controller.ts">
+import { Elysia, t } from "elysia";
+import { auth } from "../auth/auth";
+import { ProjectsService } from "./projects.service";
+
+export const projectsController = new Elysia({ prefix: "/api/projects" })
+  .get("/", async ({ request, set }) => {
+    const session = await auth.api.getSession({
+      headers: request.headers,
+    });
+
+    if (!session) {
+      set.status = 401;
+      return "Unauthorized";
+    }
+    return ProjectsService.getMyProjects(session.user.id);
+  })
+  .post("/", async ({ request, body, set }) => {
+    const session = await auth.api.getSession({
+      headers: request.headers,
+    });
+
+    if (!session) {
+      set.status = 401;
+      return "Unauthorized";
+    }
+
+    const { title, description, githubRepoId, githubRepoName } = body as {
+      title: string;
+      description?: string;
+      githubRepoId: string;
+      githubRepoName: string;
+    };
+
+    if (!title) {
+      set.status = 400;
+      return "Title is required";
+    }
+
+    if (!githubRepoId || !githubRepoName) {
+      set.status = 400;
+      return "Github Repository is required";
+    }
+
+    try {
+      return await ProjectsService.createProject(session.user.id, {
+        title,
+        description,
+        githubRepoId,
+        githubRepoName,
+      });
+    } catch (e: any) {
+      // TODO: bad practice but let's keep it for now :(
+      if (e.message === "Project already exists for this repository") {
+        set.status = 409;
+        return e.message;
+      }
+      throw e;
+    }
+  });
+</file>
+
+<file path="apps/api/src/index.ts">
+import { createApp } from "./app";
+import { config } from "./config";
+import { Logger } from "./common/logger";
+
+export type { App } from "./app";
+
+const app = createApp();
+
+app.listen(config.port, () => {
+  Logger.info(
+    `Server running at http://${app.server?.hostname}:${app.server?.port} in ${config.env} mode`,
+  );
+});
+</file>
+
+<file path="apps/api/package.json">
+{
+  "name": "@tandem/api",
+  "version": "0.0.0",
+  "module": "src/index.ts",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "dev": "bun run --watch src/index.ts",
+    "build": "bun build src/index.ts --outdir dist --target bun",
+    "db:generate": "bunx prisma generate",
+    "db:migrate": "bunx prisma migrate"
+  },
+  "dependencies": {
+    "@elysiajs/cors": "latest",
+    "@prisma/client": "5",
+    "better-auth": "^1.4.10",
+    "elysia": "latest",
+    "octokit": "^5.0.5"
+  },
+  "devDependencies": {
+    "bun-types": "latest",
+    "prisma": "5"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  },
+  "main": "src/index.ts",
+  "types": "src/index.ts"
+}
+</file>
+
+<file path="apps/web/public/globe.svg">
+<svg fill="none" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><g clip-path="url(#a)"><path fill-rule="evenodd" clip-rule="evenodd" d="M10.27 14.1a6.5 6.5 0 0 0 3.67-3.45q-1.24.21-2.7.34-.31 1.83-.97 3.1M8 16A8 8 0 1 0 8 0a8 8 0 0 0 0 16m.48-1.52a7 7 0 0 1-.96 0H7.5a4 4 0 0 1-.84-1.32q-.38-.89-.63-2.08a40 40 0 0 0 3.92 0q-.25 1.2-.63 2.08a4 4 0 0 1-.84 1.31zm2.94-4.76q1.66-.15 2.95-.43a7 7 0 0 0 0-2.58q-1.3-.27-2.95-.43a18 18 0 0 1 0 3.44m-1.27-3.54a17 17 0 0 1 0 3.64 39 39 0 0 1-4.3 0 17 17 0 0 1 0-3.64 39 39 0 0 1 4.3 0m1.1-1.17q1.45.13 2.69.34a6.5 6.5 0 0 0-3.67-3.44q.65 1.26.98 3.1M8.48 1.5l.01.02q.41.37.84 1.31.38.89.63 2.08a40 40 0 0 0-3.92 0q.25-1.2.63-2.08a4 4 0 0 1 .85-1.32 7 7 0 0 1 .96 0m-2.75.4a6.5 6.5 0 0 0-3.67 3.44 29 29 0 0 1 2.7-.34q.31-1.83.97-3.1M4.58 6.28q-1.66.16-2.95.43a7 7 0 0 0 0 2.58q1.3.27 2.95.43a18 18 0 0 1 0-3.44m.17 4.71q-1.45-.12-2.69-.34a6.5 6.5 0 0 0 3.67 3.44q-.65-1.27-.98-3.1" fill="#666"/></g><defs><clipPath id="a"><path fill="#fff" d="M0 0h16v16H0z"/></clipPath></defs></svg>
+</file>
+
+<file path="apps/web/public/vercel.svg">
+<svg fill="none" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1155 1000"><path d="m577.3 0 577.4 1000H0z" fill="#fff"/></svg>
+</file>
+
+<file path="apps/web/public/window.svg">
+<svg fill="none" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path fill-rule="evenodd" clip-rule="evenodd" d="M1.5 2.5h13v10a1 1 0 0 1-1 1h-11a1 1 0 0 1-1-1zM0 1h16v11.5a2.5 2.5 0 0 1-2.5 2.5h-11A2.5 2.5 0 0 1 0 12.5zm3.75 4.5a.75.75 0 1 0 0-1.5.75.75 0 0 0 0 1.5M7 4.75a.75.75 0 1 1-1.5 0 .75.75 0 0 1 1.5 0m1.75.75a.75.75 0 1 0 0-1.5.75.75 0 0 0 0 1.5" fill="#666"/></svg>
+</file>
+
+<file path="apps/web/src/app/dashboard/_hooks/use-project.ts">
+"use client";
+
+import { useState, useEffect, useCallback } from "react";
+import { api } from "@/lib/eden";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+
+export interface Project {
+  id: string;
+  title: string;
+  description: string | null;
+  createdAt: string | Date;
+}
+
+export function useProjects() {
+  return useQuery({
+    queryKey: ["projects"],
+    queryFn: async () => {
+      const { data, error } = await api.api.projects.get();
+      if (error) throw error;
+      return data as unknown as Project[];
+    },
+  });
+}
+
+export function useCreateProject() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (payload: {
+      title: string;
+      desciription: string;
+      githubRepoId: string;
+      githubRepoName: string;
+    }) => {
+      const { data, error } = await api.api.projects.post(payload);
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["projects"] });
+    },
+  });
+}
+</file>
+
+<file path="apps/web/src/app/dashboard/layout.tsx">
+import { AppSidebar } from "@/components/app-sidebar";
+import {
+  SidebarProvider,
+  SidebarTrigger,
+  SidebarInset,
+} from "@/components/ui/sidebar";
+import { Separator } from "@/components/ui/separator";
+
+export default function DashboardLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  return (
+    <SidebarProvider>
+      <AppSidebar />
+      <main className="w-full flex-1 overflow-hidden">
+        <header className="flex h-16 shrink-0 items-center gap-2 px-4 md:hidden">
+          <SidebarTrigger className="-ml-1" />
+        </header>
+        <div className="flex flex-1 flex-col gap-4 p-4 pt-0">{children}</div>
+      </main>
+    </SidebarProvider>
+  );
+}
+</file>
+
+<file path="apps/web/src/app/globals.css">
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-sans);
+  --font-mono: var(--font-geist-mono);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --radius-2xl: calc(var(--radius) + 8px);
+  --radius-3xl: calc(var(--radius) + 12px);
+  --radius-4xl: calc(var(--radius) + 16px);
+}
+
+:root {
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.147 0.004 49.25);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.147 0.004 49.25);
+  --primary: oklch(0.646 0.222 41.116);
+  --primary-foreground: oklch(0.98 0.016 73.684);
+  --secondary: oklch(0.967 0.001 286.375);
+  --secondary-foreground: oklch(0.21 0.006 285.885);
+  --muted: oklch(0.97 0.001 106.424);
+  --muted-foreground: oklch(0.553 0.013 58.071);
+  --accent: oklch(0.646 0.222 41.116);
+  --accent-foreground: oklch(0.98 0.016 73.684);
+  --destructive: oklch(0.577 0.245 27.325);
+  --border: oklch(0.923 0.003 48.717);
+  --input: oklch(0.923 0.003 48.717);
+  --ring: oklch(0.709 0.01 56.259);
+  --chart-1: oklch(0.837 0.128 66.29);
+  --chart-2: oklch(0.705 0.213 47.604);
+  --chart-3: oklch(0.646 0.222 41.116);
+  --chart-4: oklch(0.553 0.195 38.402);
+  --chart-5: oklch(0.47 0.157 37.304);
+  --radius: 0.625rem;
+  --sidebar: oklch(0.985 0.001 106.423);
+  --sidebar-foreground: oklch(0.147 0.004 49.25);
+  --sidebar-primary: oklch(0.646 0.222 41.116);
+  --sidebar-primary-foreground: oklch(0.98 0.016 73.684);
+  --sidebar-accent: oklch(0.97 0.001 106.424);
+  --sidebar-accent-foreground: oklch(0.98 0.016 73.684);
+  --sidebar-border: oklch(0.923 0.003 48.717);
+  --sidebar-ring: oklch(0.709 0.01 56.259);
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.147 0.004 49.25);
+}
+
+.dark {
+  --background: oklch(0.147 0.004 49.25);
+  --foreground: oklch(0.985 0.001 106.423);
+  --card: oklch(0.216 0.006 56.043);
+  --card-foreground: oklch(0.985 0.001 106.423);
+  --popover: oklch(0.216 0.006 56.043);
+  --popover-foreground: oklch(0.985 0.001 106.423);
+  --primary: oklch(0.705 0.213 47.604);
+  --primary-foreground: oklch(0.98 0.016 73.684);
+  --secondary: oklch(0.274 0.006 286.033);
+  --secondary-foreground: oklch(0.985 0 0);
+  --muted: oklch(0.268 0.007 34.298);
+  --muted-foreground: oklch(0.709 0.01 56.259);
+  --accent: oklch(0.705 0.213 47.604);
+  --accent-foreground: oklch(0.98 0.016 73.684);
+  --destructive: oklch(0.704 0.191 22.216);
+  --border: oklch(1 0 0 / 10%);
+  --input: oklch(1 0 0 / 15%);
+  --ring: oklch(0.553 0.013 58.071);
+  --chart-1: oklch(0.837 0.128 66.29);
+  --chart-2: oklch(0.705 0.213 47.604);
+  --chart-3: oklch(0.646 0.222 41.116);
+  --chart-4: oklch(0.553 0.195 38.402);
+  --chart-5: oklch(0.47 0.157 37.304);
+  --sidebar: oklch(0.216 0.006 56.043);
+  --sidebar-foreground: oklch(0.985 0.001 106.423);
+  --sidebar-primary: oklch(0.705 0.213 47.604);
+  --sidebar-primary-foreground: oklch(0.98 0.016 73.684);
+  --sidebar-accent: oklch(0.268 0.007 34.298);
+  --sidebar-accent-foreground: oklch(0.98 0.016 73.684);
+  --sidebar-border: oklch(1 0 0 / 10%);
+  --sidebar-ring: oklch(0.553 0.013 58.071);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+    @apply bg-background text-foreground;
+  }
+}
+</file>
+
+<file path="apps/web/src/app/page.tsx">
+import Link from "next/link";
+import { Button } from "@/components/ui/button";
+import { Command } from "lucide-react";
+
+export default function LandingPage() {
+  return (
+    <div className="flex min-h-screen flex-col items-center justify-center bg-background text-foreground">
+      <div className="flex flex-col items-center gap-6 text-center">
+        <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10 text-primary">
+          <Command className="h-6 w-6" />
+        </div>
+        <h1 className="text-4xl font-medium tracking-tight sm:text-5xl">
+          Tandem
+        </h1>
+        <p className="max-w-md text-muted-foreground">
+          Simplicity is the ultimate sophistication. Manage your projects with
+          focus and clarity.
+        </p>
+        <div className="flex gap-4">
+          <Link href="/dashboard">
+            <Button size="lg" className="rounded-full px-8">
+              Go to Dashboard
+            </Button>
+          </Link>
+          <Link href="/sign-in">
+            <Button variant="ghost" size="lg" className="rounded-full">
+              Sign In
+            </Button>
+          </Link>
+        </div>
+      </div>
+    </div>
+  );
 }
 </file>
 
@@ -3923,1414 +4722,6 @@ export {
 };
 </file>
 
-<file path="apps/web/src/components/ui/skeleton.tsx">
-import { cn } from "@/lib/utils"
-
-function Skeleton({ className, ...props }: React.ComponentProps<"div">) {
-  return (
-    <div
-      data-slot="skeleton"
-      className={cn("bg-muted rounded-md animate-pulse", className)}
-      {...props}
-    />
-  )
-}
-
-export { Skeleton }
-</file>
-
-<file path="apps/web/src/components/ui/textarea.tsx">
-import * as React from "react"
-
-import { cn } from "@/lib/utils"
-
-function Textarea({ className, ...props }: React.ComponentProps<"textarea">) {
-  return (
-    <textarea
-      data-slot="textarea"
-      className={cn(
-        "border-input bg-input/20 dark:bg-input/30 focus-visible:border-ring focus-visible:ring-ring/30 aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive dark:aria-invalid:border-destructive/50 resize-none rounded-md border px-2 py-2 text-sm transition-colors focus-visible:ring-[2px] aria-invalid:ring-[2px] md:text-xs/relaxed placeholder:text-muted-foreground flex field-sizing-content min-h-16 w-full outline-none disabled:cursor-not-allowed disabled:opacity-50",
-        className
-      )}
-      {...props}
-    />
-  )
-}
-
-export { Textarea }
-</file>
-
-<file path="apps/web/src/components/ui/tooltip.tsx">
-"use client"
-
-import * as React from "react"
-import { Tooltip as TooltipPrimitive } from "radix-ui"
-
-import { cn } from "@/lib/utils"
-
-function TooltipProvider({
-  delayDuration = 0,
-  ...props
-}: React.ComponentProps<typeof TooltipPrimitive.Provider>) {
-  return (
-    <TooltipPrimitive.Provider
-      data-slot="tooltip-provider"
-      delayDuration={delayDuration}
-      {...props}
-    />
-  )
-}
-
-function Tooltip({
-  ...props
-}: React.ComponentProps<typeof TooltipPrimitive.Root>) {
-  return (
-    <TooltipProvider>
-      <TooltipPrimitive.Root data-slot="tooltip" {...props} />
-    </TooltipProvider>
-  )
-}
-
-function TooltipTrigger({
-  ...props
-}: React.ComponentProps<typeof TooltipPrimitive.Trigger>) {
-  return <TooltipPrimitive.Trigger data-slot="tooltip-trigger" {...props} />
-}
-
-function TooltipContent({
-  className,
-  sideOffset = 0,
-  children,
-  ...props
-}: React.ComponentProps<typeof TooltipPrimitive.Content>) {
-  return (
-    <TooltipPrimitive.Portal>
-      <TooltipPrimitive.Content
-        data-slot="tooltip-content"
-        sideOffset={sideOffset}
-        className={cn(
-          "data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-[state=delayed-open]:animate-in data-[state=delayed-open]:fade-in-0 data-[state=delayed-open]:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 rounded-md px-3 py-1.5 text-xs **:data-[slot=kbd]:rounded-md bg-foreground text-background z-50 w-fit max-w-xs origin-(--radix-tooltip-content-transform-origin)",
-          className
-        )}
-        {...props}
-      >
-        {children}
-        <TooltipPrimitive.Arrow className="size-2.5 translate-y-[calc(-50%_-_2px)] rotate-45 rounded-[2px] bg-foreground fill-foreground z-50 translate-y-[calc(-50%_-_2px)]" />
-      </TooltipPrimitive.Content>
-    </TooltipPrimitive.Portal>
-  )
-}
-
-export { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger }
-</file>
-
-<file path="apps/web/src/hooks/use-mobile.ts">
-import * as React from "react"
-
-const MOBILE_BREAKPOINT = 768
-
-export function useIsMobile() {
-  const [isMobile, setIsMobile] = React.useState<boolean | undefined>(undefined)
-
-  React.useEffect(() => {
-    const mql = window.matchMedia(`(max-width: ${MOBILE_BREAKPOINT - 1}px)`)
-    const onChange = () => {
-      setIsMobile(window.innerWidth < MOBILE_BREAKPOINT)
-    }
-    mql.addEventListener("change", onChange)
-    setIsMobile(window.innerWidth < MOBILE_BREAKPOINT)
-    return () => mql.removeEventListener("change", onChange)
-  }, [])
-
-  return !!isMobile
-}
-</file>
-
-<file path="apps/web/src/lib/utils.ts">
-import { clsx, type ClassValue } from "clsx"
-import { twMerge } from "tailwind-merge"
-
-export function cn(...inputs: ClassValue[]) {
-  return twMerge(clsx(inputs))
-}
-</file>
-
-<file path="apps/web/components.json">
-{
-  "$schema": "https://ui.shadcn.com/schema.json",
-  "style": "radix-mira",
-  "rsc": true,
-  "tsx": true,
-  "tailwind": {
-    "config": "",
-    "css": "src/app/globals.css",
-    "baseColor": "stone",
-    "cssVariables": true,
-    "prefix": ""
-  },
-  "iconLibrary": "tabler",
-  "aliases": {
-    "components": "@/components",
-    "utils": "@/lib/utils",
-    "ui": "@/components/ui",
-    "lib": "@/lib",
-    "hooks": "@/hooks"
-  },
-  "menuColor": "default",
-  "menuAccent": "bold",
-  "registries": {}
-}
-</file>
-
-<file path="apps/web/eslint.config.mjs">
-import { defineConfig, globalIgnores } from "eslint/config";
-import nextVitals from "eslint-config-next/core-web-vitals";
-import nextTs from "eslint-config-next/typescript";
-
-const eslintConfig = defineConfig([
-  ...nextVitals,
-  ...nextTs,
-  // Override default ignores of eslint-config-next.
-  globalIgnores([
-    // Default ignores of eslint-config-next:
-    ".next/**",
-    "out/**",
-    "build/**",
-    "next-env.d.ts",
-  ]),
-]);
-
-export default eslintConfig;
-</file>
-
-<file path="apps/web/postcss.config.mjs">
-const config = {
-  plugins: {
-    "@tailwindcss/postcss": {},
-  },
-};
-
-export default config;
-</file>
-
-<file path="packages/eslint-config/base.js">
-import js from "@eslint/js";
-import eslintConfigPrettier from "eslint-config-prettier";
-import turboPlugin from "eslint-plugin-turbo";
-import tseslint from "typescript-eslint";
-import onlyWarn from "eslint-plugin-only-warn";
-
-/**
- * A shared ESLint configuration for the repository.
- *
- * @type {import("eslint").Linter.Config[]}
- * */
-export const config = [
-  js.configs.recommended,
-  eslintConfigPrettier,
-  ...tseslint.configs.recommended,
-  {
-    plugins: {
-      turbo: turboPlugin,
-    },
-    rules: {
-      "turbo/no-undeclared-env-vars": "warn",
-    },
-  },
-  {
-    plugins: {
-      onlyWarn,
-    },
-  },
-  {
-    ignores: ["dist/**"],
-  },
-];
-</file>
-
-<file path="packages/eslint-config/next.js">
-import js from "@eslint/js";
-import { globalIgnores } from "eslint/config";
-import eslintConfigPrettier from "eslint-config-prettier";
-import tseslint from "typescript-eslint";
-import pluginReactHooks from "eslint-plugin-react-hooks";
-import pluginReact from "eslint-plugin-react";
-import globals from "globals";
-import pluginNext from "@next/eslint-plugin-next";
-import { config as baseConfig } from "./base.js";
-
-/**
- * A custom ESLint configuration for libraries that use Next.js.
- *
- * @type {import("eslint").Linter.Config[]}
- * */
-export const nextJsConfig = [
-  ...baseConfig,
-  js.configs.recommended,
-  eslintConfigPrettier,
-  ...tseslint.configs.recommended,
-  globalIgnores([
-    // Default ignores of eslint-config-next:
-    ".next/**",
-    "out/**",
-    "build/**",
-    "next-env.d.ts",
-  ]),
-  {
-    ...pluginReact.configs.flat.recommended,
-    languageOptions: {
-      ...pluginReact.configs.flat.recommended.languageOptions,
-      globals: {
-        ...globals.serviceworker,
-      },
-    },
-  },
-  {
-    plugins: {
-      "@next/next": pluginNext,
-    },
-    rules: {
-      ...pluginNext.configs.recommended.rules,
-      ...pluginNext.configs["core-web-vitals"].rules,
-    },
-  },
-  {
-    plugins: {
-      "react-hooks": pluginReactHooks,
-    },
-    settings: { react: { version: "detect" } },
-    rules: {
-      ...pluginReactHooks.configs.recommended.rules,
-      // React scope no longer necessary with new JSX transform.
-      "react/react-in-jsx-scope": "off",
-    },
-  },
-];
-</file>
-
-<file path="packages/eslint-config/package.json">
-{
-  "name": "@repo/eslint-config",
-  "version": "0.0.0",
-  "type": "module",
-  "private": true,
-  "exports": {
-    "./base": "./base.js",
-    "./next-js": "./next.js",
-    "./react-internal": "./react-internal.js"
-  },
-  "devDependencies": {
-    "@eslint/js": "^9.39.1",
-    "@next/eslint-plugin-next": "^15.5.0",
-    "eslint": "^9.39.1",
-    "eslint-config-prettier": "^10.1.1",
-    "eslint-plugin-only-warn": "^1.1.0",
-    "eslint-plugin-react": "^7.37.5",
-    "eslint-plugin-react-hooks": "^5.2.0",
-    "eslint-plugin-turbo": "^2.7.1",
-    "globals": "^16.5.0",
-    "typescript": "^5.9.2",
-    "typescript-eslint": "^8.50.0"
-  }
-}
-</file>
-
-<file path="packages/eslint-config/react-internal.js">
-import js from "@eslint/js";
-import eslintConfigPrettier from "eslint-config-prettier";
-import tseslint from "typescript-eslint";
-import pluginReactHooks from "eslint-plugin-react-hooks";
-import pluginReact from "eslint-plugin-react";
-import globals from "globals";
-import { config as baseConfig } from "./base.js";
-
-/**
- * A custom ESLint configuration for libraries that use React.
- *
- * @type {import("eslint").Linter.Config[]} */
-export const config = [
-  ...baseConfig,
-  js.configs.recommended,
-  eslintConfigPrettier,
-  ...tseslint.configs.recommended,
-  pluginReact.configs.flat.recommended,
-  {
-    languageOptions: {
-      ...pluginReact.configs.flat.recommended.languageOptions,
-      globals: {
-        ...globals.serviceworker,
-        ...globals.browser,
-      },
-    },
-  },
-  {
-    plugins: {
-      "react-hooks": pluginReactHooks,
-    },
-    settings: { react: { version: "detect" } },
-    rules: {
-      ...pluginReactHooks.configs.recommended.rules,
-      // React scope no longer necessary with new JSX transform.
-      "react/react-in-jsx-scope": "off",
-    },
-  },
-];
-</file>
-
-<file path="packages/eslint-config/README.md">
-# `@turbo/eslint-config`
-
-Collection of internal eslint configurations.
-</file>
-
-<file path="packages/typescript-config/base.json">
-{
-  "$schema": "https://json.schemastore.org/tsconfig",
-  "compilerOptions": {
-    "declaration": true,
-    "declarationMap": true,
-    "esModuleInterop": true,
-    "incremental": false,
-    "isolatedModules": true,
-    "lib": ["es2022", "DOM", "DOM.Iterable"],
-    "module": "NodeNext",
-    "moduleDetection": "force",
-    "moduleResolution": "NodeNext",
-    "noUncheckedIndexedAccess": true,
-    "resolveJsonModule": true,
-    "skipLibCheck": true,
-    "strict": true,
-    "target": "ES2022"
-  }
-}
-</file>
-
-<file path="packages/typescript-config/nextjs.json">
-{
-  "$schema": "https://json.schemastore.org/tsconfig",
-  "extends": "./base.json",
-  "compilerOptions": {
-    "plugins": [{ "name": "next" }],
-    "module": "ESNext",
-    "moduleResolution": "Bundler",
-    "allowJs": true,
-    "jsx": "preserve",
-    "noEmit": true
-  }
-}
-</file>
-
-<file path="packages/typescript-config/package.json">
-{
-  "name": "@repo/typescript-config",
-  "version": "0.0.0",
-  "private": true,
-  "license": "MIT",
-  "publishConfig": {
-    "access": "public"
-  }
-}
-</file>
-
-<file path="packages/typescript-config/react-library.json">
-{
-  "$schema": "https://json.schemastore.org/tsconfig",
-  "extends": "./base.json",
-  "compilerOptions": {
-    "jsx": "react-jsx"
-  }
-}
-</file>
-
-<file path="packages/ui/src/button.tsx">
-"use client";
-
-import { ReactNode } from "react";
-
-interface ButtonProps {
-  children: ReactNode;
-  className?: string;
-  appName: string;
-}
-
-export const Button = ({ children, className, appName }: ButtonProps) => {
-  return (
-    <button
-      className={className}
-      onClick={() => alert(`Hello from your ${appName} app!`)}
-    >
-      {children}
-    </button>
-  );
-};
-</file>
-
-<file path="packages/ui/src/card.tsx">
-import { type JSX } from "react";
-
-export function Card({
-  className,
-  title,
-  children,
-  href,
-}: {
-  className?: string;
-  title: string;
-  children: React.ReactNode;
-  href: string;
-}): JSX.Element {
-  return (
-    <a
-      className={className}
-      href={`${href}?utm_source=create-turbo&utm_medium=basic&utm_campaign=create-turbo"`}
-      rel="noopener noreferrer"
-      target="_blank"
-    >
-      <h2>
-        {title} <span>-&gt;</span>
-      </h2>
-      <p>{children}</p>
-    </a>
-  );
-}
-</file>
-
-<file path="packages/ui/src/code.tsx">
-import { type JSX } from "react";
-
-export function Code({
-  children,
-  className,
-}: {
-  children: React.ReactNode;
-  className?: string;
-}): JSX.Element {
-  return <code className={className}>{children}</code>;
-}
-</file>
-
-<file path="packages/ui/eslint.config.mjs">
-import { config } from "@repo/eslint-config/react-internal";
-
-/** @type {import("eslint").Linter.Config} */
-export default config;
-</file>
-
-<file path="packages/ui/tsconfig.json">
-{
-  "extends": "@repo/typescript-config/react-library.json",
-  "compilerOptions": {
-    "outDir": "dist"
-  },
-  "include": ["src"],
-  "exclude": ["node_modules", "dist"]
-}
-</file>
-
-<file path=".npmrc">
-
-</file>
-
-<file path="docker-compose.yml">
-version: "3.8"
-
-services:
-  postgres:
-    image: postgres:15-alpine
-    container_name: tandem_postgres
-    restart: always
-    environment:
-      POSTGRES_USER: user
-      POSTGRES_PASSWORD: password
-      POSTGRES_DB: tandem
-    ports:
-      - "5432:5432"
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-
-volumes:
-  postgres_data:
-</file>
-
-<file path="turbo.json">
-{
-  "$schema": "https://turborepo.com/schema.json",
-  "ui": "tui",
-  "tasks": {
-    "build": {
-      "dependsOn": ["^build"],
-      "inputs": ["$TURBO_DEFAULT$", ".env*"],
-      "outputs": [".next/**", "!.next/cache/**"]
-    },
-    "lint": {
-      "dependsOn": ["^lint"]
-    },
-    "check-types": {
-      "dependsOn": ["^check-types"]
-    },
-    "dev": {
-      "cache": false,
-      "persistent": true
-    }
-  }
-}
-</file>
-
-<file path="apps/api/prisma/schema.prisma">
-datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
-}
-
-generator client {
-  provider = "prisma-client-js"
-  output   = "../../../node_modules/.prisma/client"
-}
-
-model User {
-  id            String   @id
-  name          String
-  email         String
-  emailVerified Boolean
-  image         String?
-  createdAt     DateTime
-  updatedAt     DateTime
-
-  sessions Session[]
-  accounts Account[]
-
-  members       Member[]
-  assignedTasks Task[]
-
-  @@unique([email])
-  @@map("user")
-}
-
-model Session {
-  id        String   @id
-  userId    String
-  token     String
-  expiresAt DateTime
-  ipAddress String?
-  userAgent String?
-  createdAt DateTime
-  updatedAt DateTime
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@unique([token])
-  @@map("session")
-}
-
-model Account {
-  id                    String    @id
-  userId                String
-  accountId             String
-  providerId            String
-  accessToken           String?
-  refreshToken          String?
-  accessTokenExpiresAt  DateTime?
-  refreshTokenExpiresAt DateTime?
-  scope                 String?
-  password              String?
-  createdAt             DateTime
-  updatedAt             DateTime
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@map("account")
-}
-
-model Verification {
-  id         String    @id
-  identifier String
-  value      String
-  expiresAt  DateTime
-  createdAt  DateTime?
-  updatedAt  DateTime?
-
-  @@map("verification")
-}
-
-model Project {
-  id          String  @id @default(cuid())
-  title       String
-  description String?
-
-  githubRepoId   String?
-  githubRepoName String?
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  members Member[]
-  tasks   Task[]
-
-  @@map("project")
-}
-
-model Member {
-  id        String   @id @default(cuid())
-  userId    String
-  projectId String
-  role      String   @default("MEMBER")
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
-  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
-
-  @@unique([userId, projectId])
-  @@map("member")
-}
-
-model Task {
-  id          String  @id @default(cuid())
-  title       String
-  description String?
-  status      String  @default("todo")
-  order       Float   @default(0)
-
-  branchName String?
-  prNumber   Int?
-  prStatus   String?
-
-  projectId String
-  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
-
-  assignedToUserId String?
-  assignedTo       User?   @relation(fields: [assignedToUserId], references: [id])
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@map("task")
-}
-</file>
-
-<file path="apps/api/src/config/index.ts">
-export const config = {
-  env: process.env.NODE_ENV || "development",
-  port: process.env.PORT ? parseInt(process.env.PORT) : 3001,
-  app: {
-    name: "Tandem API",
-    version: "1.0.0",
-  },
-  cors: {
-    origin: "http://localhost:3000",
-  },
-};
-</file>
-
-<file path="apps/api/src/modules/projects/projects.service.ts">
-import { prisma } from "../../common/db";
-
-export class ProjectsService {
-  static async createProject(
-    userId: string,
-    data: {
-      title: string;
-      description?: string;
-      githubRepoId: string;
-      githubRepoName: string;
-    }
-  ) {
-    const existing = await prisma.project.findFirst({
-      where: { githubRepoId: data.githubRepoId },
-    });
-
-    if (existing) {
-      throw new Error("Project already exists for this repository");
-    }
-
-    return prisma.project.create({
-      data: {
-        title: data.title,
-        description: data.description,
-        githubRepoId: data.githubRepoId,
-        githubRepoName: data.githubRepoName,
-        members: {
-          create: {
-            userId,
-            role: "OWNER",
-          },
-        },
-      },
-    });
-  }
-
-  static async getMyProjects(userId: string) {
-    return prisma.project.findMany({
-      where: {
-        members: {
-          some: {
-            userId,
-          },
-        },
-      },
-      orderBy: {
-        updatedAt: "desc",
-      },
-    });
-  }
-}
-</file>
-
-<file path="apps/api/src/modules/index.ts">
-import { Elysia } from "elysia";
-import { statusController } from "./status/status.controller";
-import { authController } from "./auth/auth.controller";
-import { projectsController } from "./projects/projects.controller";
-import { githubController } from "./github/github.controller";
-
-export const modules = new Elysia()
-  .use(statusController)
-  .use(authController)
-  .use(projectsController)
-  .use(githubController);
-</file>
-
-<file path="apps/api/src/index.ts">
-import { createApp } from "./app";
-import { config } from "./config";
-import { Logger } from "./common/logger";
-
-export type { App } from "./app";
-
-const app = createApp();
-
-app.listen(config.port, () => {
-  Logger.info(
-    `Server running at http://${app.server?.hostname}:${app.server?.port} in ${config.env} mode`,
-  );
-});
-</file>
-
-<file path="apps/web/public/globe.svg">
-<svg fill="none" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><g clip-path="url(#a)"><path fill-rule="evenodd" clip-rule="evenodd" d="M10.27 14.1a6.5 6.5 0 0 0 3.67-3.45q-1.24.21-2.7.34-.31 1.83-.97 3.1M8 16A8 8 0 1 0 8 0a8 8 0 0 0 0 16m.48-1.52a7 7 0 0 1-.96 0H7.5a4 4 0 0 1-.84-1.32q-.38-.89-.63-2.08a40 40 0 0 0 3.92 0q-.25 1.2-.63 2.08a4 4 0 0 1-.84 1.31zm2.94-4.76q1.66-.15 2.95-.43a7 7 0 0 0 0-2.58q-1.3-.27-2.95-.43a18 18 0 0 1 0 3.44m-1.27-3.54a17 17 0 0 1 0 3.64 39 39 0 0 1-4.3 0 17 17 0 0 1 0-3.64 39 39 0 0 1 4.3 0m1.1-1.17q1.45.13 2.69.34a6.5 6.5 0 0 0-3.67-3.44q.65 1.26.98 3.1M8.48 1.5l.01.02q.41.37.84 1.31.38.89.63 2.08a40 40 0 0 0-3.92 0q.25-1.2.63-2.08a4 4 0 0 1 .85-1.32 7 7 0 0 1 .96 0m-2.75.4a6.5 6.5 0 0 0-3.67 3.44 29 29 0 0 1 2.7-.34q.31-1.83.97-3.1M4.58 6.28q-1.66.16-2.95.43a7 7 0 0 0 0 2.58q1.3.27 2.95.43a18 18 0 0 1 0-3.44m.17 4.71q-1.45-.12-2.69-.34a6.5 6.5 0 0 0 3.67 3.44q-.65-1.27-.98-3.1" fill="#666"/></g><defs><clipPath id="a"><path fill="#fff" d="M0 0h16v16H0z"/></clipPath></defs></svg>
-</file>
-
-<file path="apps/web/public/vercel.svg">
-<svg fill="none" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1155 1000"><path d="m577.3 0 577.4 1000H0z" fill="#fff"/></svg>
-</file>
-
-<file path="apps/web/public/window.svg">
-<svg fill="none" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><path fill-rule="evenodd" clip-rule="evenodd" d="M1.5 2.5h13v10a1 1 0 0 1-1 1h-11a1 1 0 0 1-1-1zM0 1h16v11.5a2.5 2.5 0 0 1-2.5 2.5h-11A2.5 2.5 0 0 1 0 12.5zm3.75 4.5a.75.75 0 1 0 0-1.5.75.75 0 0 0 0 1.5M7 4.75a.75.75 0 1 1-1.5 0 .75.75 0 0 1 1.5 0m1.75.75a.75.75 0 1 0 0-1.5.75.75 0 0 0 0 1.5" fill="#666"/></svg>
-</file>
-
-<file path="apps/web/src/app/(auth)/sign-in/page.tsx">
-"use client";
-
-import { useState } from "react";
-import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { authClient } from "@/lib/auth-client";
-import { useRouter } from "next/navigation";
-import Link from "next/link";
-import { Command, Github } from "lucide-react";
-
-export default function SignIn() {
-  const [loading, setLoading] = useState(false);
-  const router = useRouter();
-
-  const handleSignIn = async () => {
-    setLoading(true);
-    await authClient.signIn.social(
-      {
-        provider: "github",
-        callbackURL: "/dashboard",
-      },
-      {
-        onSuccess: () => {
-          router.push("/dashboard");
-        },
-        onError: (ctx) => {
-          alert(ctx.error.message);
-          setLoading(false);
-        },
-      }
-    );
-  };
-
-  return (
-    <div className="w-full lg:grid lg:min-h-screen lg:grid-cols-3 xl:min-h-screen">
-      <div className="flex items-center justify-center py-12 lg:col-span-1">
-        <div className="mx-auto w-[350px] space-y-6">
-          <Card className="border-0 shadow-none sm:border sm:shadow-sm">
-            <CardHeader>
-              <CardTitle className="">Sign In</CardTitle>
-              <CardDescription>
-                Welcome back. Sign in to your account to continue.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="grid gap-4">
-              <Button
-                className="w-full gap-2"
-                onClick={handleSignIn}
-                disabled={loading}
-                variant="outline"
-              >
-                <Github className="h-4 w-4" />
-                {loading ? "Connecting..." : "Continue with GitHub"}
-              </Button>
-            </CardContent>
-            <CardFooter className="flex flex-col gap-4">
-              <div className="text-center text-xs">
-                Don&apos;t have an account?{" "}
-                <Link href="/sign-up" className="underline underline-offset-4">
-                  Sign up
-                </Link>
-              </div>
-            </CardFooter>
-          </Card>
-        </div>
-      </div>
-
-      <div className="hidden lg:col-span-2 lg:flex flex-col justify-between p-10 text-white dark:border-r">
-        <div className="flex items-center gap-2 text-lg font-medium">
-          <div className="flex h-8 w-8 items-center justify-center rounded-md bg-white text-zinc-900">
-            <Command className="h-5 w-5" />
-          </div>
-          Tandem
-        </div>
-        <div className="max-w-md">
-          <blockquote className="space-y-2">
-            <p className="text-lg font-medium leading-relaxed">
-              &ldquo;Simplicity is the ultimate sophistication. Welcome back to
-              your workspace.&rdquo;
-            </p>
-          </blockquote>
-        </div>
-      </div>
-    </div>
-  );
-}
-</file>
-
-<file path="apps/web/src/app/(auth)/sign-up/page.tsx">
-"use client";
-
-import { useState } from "react";
-import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { authClient } from "@/lib/auth-client";
-import { useRouter } from "next/navigation";
-import Link from "next/link";
-import { Command } from "lucide-react";
-
-export default function SignUp() {
-  const [name, setName] = useState("");
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [loading, setLoading] = useState(false);
-  const router = useRouter();
-
-  const handleSignUp = async () => {
-    setLoading(true);
-    await authClient.signUp.email(
-      {
-        email,
-        password,
-        name,
-      },
-      {
-        onSuccess: () => {
-          router.push("/dashboard");
-        },
-        onError: (ctx) => {
-          alert(ctx.error.message);
-          setLoading(false);
-        },
-      },
-    );
-  };
-
-  return (
-    <div className="w-full lg:grid lg:min-h-screen lg:grid-cols-3 xl:min-h-screen">
-      <div className="flex items-center justify-center py-12 lg:col-span-1">
-        <div className="mx-auto w-[350px] space-y-6">
-          <Card className="border-0 shadow-none sm:border sm:shadow-sm">
-            <CardHeader>
-              <CardTitle className="text-2xl">Create an account</CardTitle>
-              <CardDescription>
-                Enter your email below to create your account
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="grid gap-4">
-              <div className="grid gap-2">
-                <Label htmlFor="name">Name</Label>
-                <Input
-                  id="name"
-                  type="text"
-                  placeholder="John Doe"
-                  required
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                />
-              </div>
-              <div className="grid gap-2">
-                <Label htmlFor="email">Email</Label>
-                <Input
-                  id="email"
-                  type="email"
-                  placeholder="m@example.com"
-                  required
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                />
-              </div>
-              <div className="grid gap-2">
-                <Label htmlFor="password">Password</Label>
-                <Input
-                  id="password"
-                  type="password"
-                  required
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                />
-              </div>
-            </CardContent>
-            <CardFooter className="flex flex-col gap-4">
-              <Button
-                className="w-full"
-                onClick={handleSignUp}
-                disabled={loading}
-              >
-                {loading ? "Creating account..." : "Sign Up"}
-              </Button>
-              <div className="text-center text-sm">
-                Already have an account?{" "}
-                <Link href="/sign-in" className="underline underline-offset-4">
-                  Sign in
-                </Link>
-              </div>
-            </CardFooter>
-          </Card>
-        </div>
-      </div>
-
-      <div className="hidden bg-zinc-900 lg:col-span-2 lg:flex flex-col justify-between p-10 text-white dark:border-r">
-        <div className="flex items-center gap-2 text-lg font-medium">
-          <div className="flex h-8 w-8 items-center justify-center rounded-md bg-white text-zinc-900">
-            <Command className="h-5 w-5" />
-          </div>
-          Tandem
-        </div>
-        <div className="max-w-md">
-          <blockquote className="space-y-2">
-            <p className="text-lg font-medium leading-relaxed">
-              &ldquo;The best way to predict the future is to create it. Join us
-              in building the next generation of software.&rdquo;
-            </p>
-          </blockquote>
-        </div>
-      </div>
-    </div>
-  );
-
-}
-</file>
-
-<file path="apps/web/src/app/dashboard/layout.tsx">
-import { AppSidebar } from "@/components/app-sidebar";
-import {
-  SidebarProvider,
-  SidebarTrigger,
-  SidebarInset,
-} from "@/components/ui/sidebar";
-import { Separator } from "@/components/ui/separator";
-
-export default function DashboardLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
-  return (
-    <SidebarProvider>
-      <AppSidebar />
-      <main className="w-full flex-1 overflow-hidden">
-        <header className="flex h-16 shrink-0 items-center gap-2 px-4 md:hidden">
-          <SidebarTrigger className="-ml-1" />
-        </header>
-        <div className="flex flex-1 flex-col gap-4 p-4 pt-0">{children}</div>
-      </main>
-    </SidebarProvider>
-  );
-}
-</file>
-
-<file path="apps/web/src/app/globals.css">
-@import "tailwindcss";
-@import "tw-animate-css";
-@import "shadcn/tailwind.css";
-
-@custom-variant dark (&:is(.dark *));
-
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-sans);
-  --font-mono: var(--font-geist-mono);
-  --color-sidebar-ring: var(--sidebar-ring);
-  --color-sidebar-border: var(--sidebar-border);
-  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
-  --color-sidebar-accent: var(--sidebar-accent);
-  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
-  --color-sidebar-primary: var(--sidebar-primary);
-  --color-sidebar-foreground: var(--sidebar-foreground);
-  --color-sidebar: var(--sidebar);
-  --color-chart-5: var(--chart-5);
-  --color-chart-4: var(--chart-4);
-  --color-chart-3: var(--chart-3);
-  --color-chart-2: var(--chart-2);
-  --color-chart-1: var(--chart-1);
-  --color-ring: var(--ring);
-  --color-input: var(--input);
-  --color-border: var(--border);
-  --color-destructive: var(--destructive);
-  --color-accent-foreground: var(--accent-foreground);
-  --color-accent: var(--accent);
-  --color-muted-foreground: var(--muted-foreground);
-  --color-muted: var(--muted);
-  --color-secondary-foreground: var(--secondary-foreground);
-  --color-secondary: var(--secondary);
-  --color-primary-foreground: var(--primary-foreground);
-  --color-primary: var(--primary);
-  --color-popover-foreground: var(--popover-foreground);
-  --color-popover: var(--popover);
-  --color-card-foreground: var(--card-foreground);
-  --color-card: var(--card);
-  --radius-sm: calc(var(--radius) - 4px);
-  --radius-md: calc(var(--radius) - 2px);
-  --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) + 4px);
-  --radius-2xl: calc(var(--radius) + 8px);
-  --radius-3xl: calc(var(--radius) + 12px);
-  --radius-4xl: calc(var(--radius) + 16px);
-}
-
-:root {
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.147 0.004 49.25);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.147 0.004 49.25);
-  --primary: oklch(0.646 0.222 41.116);
-  --primary-foreground: oklch(0.98 0.016 73.684);
-  --secondary: oklch(0.967 0.001 286.375);
-  --secondary-foreground: oklch(0.21 0.006 285.885);
-  --muted: oklch(0.97 0.001 106.424);
-  --muted-foreground: oklch(0.553 0.013 58.071);
-  --accent: oklch(0.646 0.222 41.116);
-  --accent-foreground: oklch(0.98 0.016 73.684);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.923 0.003 48.717);
-  --input: oklch(0.923 0.003 48.717);
-  --ring: oklch(0.709 0.01 56.259);
-  --chart-1: oklch(0.837 0.128 66.29);
-  --chart-2: oklch(0.705 0.213 47.604);
-  --chart-3: oklch(0.646 0.222 41.116);
-  --chart-4: oklch(0.553 0.195 38.402);
-  --chart-5: oklch(0.47 0.157 37.304);
-  --radius: 0.625rem;
-  --sidebar: oklch(0.985 0.001 106.423);
-  --sidebar-foreground: oklch(0.147 0.004 49.25);
-  --sidebar-primary: oklch(0.646 0.222 41.116);
-  --sidebar-primary-foreground: oklch(0.98 0.016 73.684);
-  --sidebar-accent: oklch(0.97 0.001 106.424);
-  --sidebar-accent-foreground: oklch(0.98 0.016 73.684);
-  --sidebar-border: oklch(0.923 0.003 48.717);
-  --sidebar-ring: oklch(0.709 0.01 56.259);
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.147 0.004 49.25);
-}
-
-.dark {
-  --background: oklch(0.147 0.004 49.25);
-  --foreground: oklch(0.985 0.001 106.423);
-  --card: oklch(0.216 0.006 56.043);
-  --card-foreground: oklch(0.985 0.001 106.423);
-  --popover: oklch(0.216 0.006 56.043);
-  --popover-foreground: oklch(0.985 0.001 106.423);
-  --primary: oklch(0.705 0.213 47.604);
-  --primary-foreground: oklch(0.98 0.016 73.684);
-  --secondary: oklch(0.274 0.006 286.033);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.268 0.007 34.298);
-  --muted-foreground: oklch(0.709 0.01 56.259);
-  --accent: oklch(0.705 0.213 47.604);
-  --accent-foreground: oklch(0.98 0.016 73.684);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.553 0.013 58.071);
-  --chart-1: oklch(0.837 0.128 66.29);
-  --chart-2: oklch(0.705 0.213 47.604);
-  --chart-3: oklch(0.646 0.222 41.116);
-  --chart-4: oklch(0.553 0.195 38.402);
-  --chart-5: oklch(0.47 0.157 37.304);
-  --sidebar: oklch(0.216 0.006 56.043);
-  --sidebar-foreground: oklch(0.985 0.001 106.423);
-  --sidebar-primary: oklch(0.705 0.213 47.604);
-  --sidebar-primary-foreground: oklch(0.98 0.016 73.684);
-  --sidebar-accent: oklch(0.268 0.007 34.298);
-  --sidebar-accent-foreground: oklch(0.98 0.016 73.684);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.553 0.013 58.071);
-}
-
-@layer base {
-  * {
-    @apply border-border outline-ring/50;
-    @apply border-border outline-ring/50;
-  }
-  body {
-    @apply bg-background text-foreground;
-    @apply bg-background text-foreground;
-  }
-}
-</file>
-
-<file path="apps/web/src/app/layout.tsx">
-import type { Metadata } from "next";
-import { Geist, Geist_Mono, Inter, Roboto } from "next/font/google";
-import "./globals.css";
-import { cn } from "@/lib/utils";
-
-const roboto = Roboto({ subsets: ["latin"], variable: "--font-sans" });
-
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
-
-export const metadata: Metadata = {
-  title: "Create Next App",
-  description: "Generated by create next app",
-};
-
-export default function RootLayout({
-  children,
-}: Readonly<{
-  children: React.ReactNode;
-}>) {
-  return (
-    <html
-      lang="en"
-      className={cn("dark", roboto.variable, roboto.variable)}
-      suppressHydrationWarning
-    >
-      <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
-      >
-        {children}
-      </body>
-    </html>
-  );
-}
-</file>
-
-<file path="apps/web/src/app/page.tsx">
-import Link from "next/link";
-import { Button } from "@/components/ui/button";
-import { Command } from "lucide-react";
-
-export default function LandingPage() {
-  return (
-    <div className="flex min-h-screen flex-col items-center justify-center bg-background text-foreground">
-      <div className="flex flex-col items-center gap-6 text-center">
-        <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10 text-primary">
-          <Command className="h-6 w-6" />
-        </div>
-        <h1 className="text-4xl font-medium tracking-tight sm:text-5xl">
-          Tandem
-        </h1>
-        <p className="max-w-md text-muted-foreground">
-          Simplicity is the ultimate sophistication. Manage your projects with
-          focus and clarity.
-        </p>
-        <div className="flex gap-4">
-          <Link href="/dashboard">
-            <Button size="lg" className="rounded-full px-8">
-              Go to Dashboard
-            </Button>
-          </Link>
-          <Link href="/sign-in">
-            <Button variant="ghost" size="lg" className="rounded-full">
-              Sign In
-            </Button>
-          </Link>
-        </div>
-      </div>
-    </div>
-  );
-}
-</file>
-
-<file path="apps/web/src/components/app-sidebar.tsx">
-"use client";
-
-import {
-  Sidebar,
-  SidebarContent,
-  SidebarFooter,
-  SidebarHeader,
-  SidebarMenu,
-  SidebarMenuButton,
-  SidebarMenuItem,
-  SidebarGroup,
-  SidebarGroupContent,
-  SidebarGroupLabel,
-} from "@/components/ui/sidebar";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { authClient } from "@/lib/auth-client";
-import { useRouter } from "next/navigation";
-import {
-  IconCommand,
-  IconLayoutDashboard,
-  IconLogout,
-  IconSelector,
-} from "@tabler/icons-react";
-import { Skeleton } from "@/components/ui/skeleton";
-
-export function AppSidebar() {
-  const { data: session, isPending } = authClient.useSession();
-  const router = useRouter();
-
-  const handleSignOut = async () => {
-    await authClient.signOut();
-    router.push("/sign-up");
-  };
-
-  return (
-    <Sidebar>
-      <SidebarHeader>
-        <SidebarMenu>
-          <SidebarMenuItem>
-            <SidebarMenuButton
-              size="lg"
-              className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
-            >
-              <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground">
-                <IconCommand className="size-4" />
-              </div>
-              <div className="grid flex-1 text-left text-sm leading-tight">
-                <span className="truncate font-semibold">Tandem</span>
-                <span className="truncate text-xs">Project Management</span>
-              </div>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
-        </SidebarMenu>
-      </SidebarHeader>
-
-      <SidebarContent>
-        <SidebarGroup>
-          <SidebarGroupLabel>Platform</SidebarGroupLabel>
-          <SidebarGroupContent>
-            <SidebarMenu>
-              <SidebarMenuItem>
-                <SidebarMenuButton asChild tooltip="Dashboard">
-                  <a href="/dashboard">
-                    <IconLayoutDashboard />
-                    <span>Dashboard</span>
-                  </a>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
-      </SidebarContent>
-
-      <SidebarFooter>
-        <SidebarMenu>
-          <SidebarMenuItem>
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <SidebarMenuButton
-                  size="lg"
-                  className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
-                >
-                  {isPending ? (
-                    <div className="flex items-center gap-2">
-                      <Skeleton className="h-8 w-8 rounded-full" />
-                      <div className="flex flex-col gap-1">
-                        <Skeleton className="h-3 w-20" />
-                        <Skeleton className="h-2 w-16" />
-                      </div>
-                    </div>
-                  ) : (
-                    <>
-                      <Avatar className="h-8 w-8 rounded-lg">
-                        <AvatarImage
-                          src={session?.user?.image || ""}
-                          alt={session?.user?.name || ""}
-                        />
-                        <AvatarFallback className="rounded-lg">
-                          {session?.user?.name?.slice(0, 2).toUpperCase() ||
-                            "CN"}
-                        </AvatarFallback>
-                      </Avatar>
-                      <div className="grid flex-1 text-left text-sm leading-tight">
-                        <span className="truncate font-semibold">
-                          {session?.user?.name || "User"}
-                        </span>
-                        <span className="truncate text-xs">
-                          {session?.user?.email || "user@example.com"}
-                        </span>
-                      </div>
-                      <IconSelector className="ml-auto size-4" />
-                    </>
-                  )}
-                </SidebarMenuButton>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent
-                className="w-[--radix-dropdown-menu-trigger-width] min-w-56 rounded-lg"
-                side="bottom"
-                align="end"
-                sideOffset={4}
-              >
-                <DropdownMenuItem onClick={handleSignOut}>
-                  <IconLogout className="mr-2 h-4 w-4" />
-                  Log out
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </SidebarMenuItem>
-        </SidebarMenu>
-      </SidebarFooter>
-    </Sidebar>
-  );
-}
-</file>
-
 <file path="apps/web/src/lib/auth-client.ts">
 import { createAuthClient } from "better-auth/react";
 
@@ -5344,36 +4735,6 @@ import { edenTreaty } from "@elysiajs/eden";
 import type { App } from "@tandem/api";
 
 export const api = edenTreaty<App>("http://localhost:3000");
-</file>
-
-<file path="apps/web/src/middleware.ts">
-import { NextResponse } from "next/server";
-import { NextRequest } from "next/server";
-
-export function middleware(request: NextRequest) {
-  const sessionToken = request.cookies.get("better-auth.session_token");
-  const { pathname } = request.nextUrl;
-
-  const authRoutes = ["/sign-in", "/sign-up", "/"];
-  const protectedRoutes = ["/dashboard"];
-
-  if (sessionToken && authRoutes.includes(pathname)) {
-    return NextResponse.redirect(new URL("/dashboard", request.url));
-  }
-
-  if (
-    !sessionToken &&
-    protectedRoutes.some((route) => pathname.startsWith(route))
-  ) {
-    return NextResponse.redirect(new URL("/sign-in", request.url));
-  }
-
-  return NextResponse.next();
-}
-
-export const config = {
-  matcher: ["/", "/sign-in", "/sign-up"],
-};
 </file>
 
 <file path="apps/web/.gitignore">
@@ -5723,6 +5084,765 @@ Learn more about the power of Turborepo:
 - [CLI Usage](https://turborepo.com/docs/reference/command-line-reference)
 </file>
 
+<file path="apps/api/prisma/schema.prisma">
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model User {
+  id            String   @id
+  name          String
+  email         String
+  emailVerified Boolean
+  image         String?
+  createdAt     DateTime
+  updatedAt     DateTime
+
+  sessions Session[]
+  accounts Account[]
+
+  members       Member[]
+  assignedTasks Task[]
+
+  @@unique([email])
+  @@map("user")
+}
+
+model Session {
+  id        String   @id
+  userId    String
+  token     String
+  expiresAt DateTime
+  ipAddress String?
+  userAgent String?
+  createdAt DateTime
+  updatedAt DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([token])
+  @@map("session")
+}
+
+model Account {
+  id                    String    @id
+  userId                String
+  accountId             String
+  providerId            String
+  accessToken           String?
+  refreshToken          String?
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                 String?
+  password              String?
+  createdAt             DateTime
+  updatedAt             DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("account")
+}
+
+model Verification {
+  id         String    @id
+  identifier String
+  value      String
+  expiresAt  DateTime
+  createdAt  DateTime?
+  updatedAt  DateTime?
+
+  @@map("verification")
+}
+
+model Project {
+  id          String  @id @default(cuid())
+  title       String
+  description String?
+
+  githubRepoId   String?
+  githubRepoName String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  members Member[]
+  tasks   Task[]
+
+  @@map("project")
+}
+
+model Member {
+  id        String   @id @default(cuid())
+  userId    String
+  projectId String
+  role      String   @default("MEMBER")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, projectId])
+  @@map("member")
+}
+
+model Task {
+  id          String  @id @default(cuid())
+  title       String
+  description String?
+  status      String  @default("todo")
+  order       Float   @default(0)
+
+  branchName String?
+  prNumber   Int?
+  prStatus   String?
+
+  projectId String
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  assignedToUserId String?
+  assignedTo       User?   @relation(fields: [assignedToUserId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("task")
+}
+</file>
+
+<file path="apps/api/src/modules/projects/projects.service.ts">
+import { prisma } from "../../common/db";
+
+export class ProjectsService {
+  static async createProject(
+    userId: string,
+    data: {
+      title: string;
+      description?: string;
+      githubRepoId: string;
+      githubRepoName: string;
+    }
+  ) {
+    const existing = await prisma.project.findFirst({
+      where: { githubRepoId: data.githubRepoId },
+    });
+
+    if (existing) {
+      throw new Error("Project already exists for this repository");
+    }
+
+    return prisma.project.create({
+      data: {
+        title: data.title,
+        description: data.description,
+        githubRepoId: data.githubRepoId,
+        githubRepoName: data.githubRepoName,
+        members: {
+          create: {
+            userId,
+            role: "OWNER",
+          },
+        },
+      },
+    });
+  }
+
+  static async getMyProjects(userId: string) {
+    return prisma.project.findMany({
+      where: {
+        members: {
+          some: {
+            userId,
+          },
+        },
+      },
+      orderBy: {
+        updatedAt: "desc",
+      },
+    });
+  }
+}
+</file>
+
+<file path="apps/api/src/modules/index.ts">
+import { Elysia } from "elysia";
+import { statusController } from "./status/status.controller";
+import { authController } from "./auth/auth.controller";
+import { projectsController } from "./projects/projects.controller";
+import { githubController } from "./github/github.controller";
+
+export const modules = new Elysia()
+  .use(statusController)
+  .use(authController)
+  .use(projectsController)
+  .use(githubController);
+</file>
+
+<file path="apps/web/src/app/(auth)/sign-in/page.tsx">
+"use client";
+
+import { useState } from "react";
+import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { authClient } from "@/lib/auth-client";
+import { useRouter } from "next/navigation";
+import Link from "next/link";
+import { Command, Github } from "lucide-react";
+import { toast } from "sonner";
+
+export default function SignIn() {
+  const [loading, setLoading] = useState(false);
+  const router = useRouter();
+
+  const handleSignIn = async () => {
+    setLoading(true);
+    await authClient.signIn.social(
+      {
+        provider: "github",
+        callbackURL: "/dashboard",
+      },
+      {
+        onSuccess: () => {
+          router.push("/dashboard");
+        },
+        onError: (ctx) => {
+          toast.error(ctx.error.message);
+          setLoading(false);
+        },
+      }
+    );
+  };
+
+  return (
+    <div className="w-full lg:grid lg:min-h-screen lg:grid-cols-3 xl:min-h-screen">
+      <div className="flex items-center justify-center py-12 lg:col-span-1">
+        <div className="mx-auto w-[350px] space-y-6">
+          <Card className="border-0 shadow-none sm:border sm:shadow-sm">
+            <CardHeader>
+              <CardTitle className="">Sign In</CardTitle>
+              <CardDescription>
+                Welcome back. Sign in to your account to continue.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="grid gap-4">
+              <Button
+                className="w-full gap-2"
+                onClick={handleSignIn}
+                disabled={loading}
+                variant="outline"
+              >
+                <Github className="h-4 w-4" />
+                {loading ? "Connecting..." : "Continue with GitHub"}
+              </Button>
+            </CardContent>
+            <CardFooter className="flex flex-col gap-4">
+              <div className="text-center text-xs">
+                Don&apos;t have an account?{" "}
+                <Link href="/sign-up" className="underline underline-offset-4">
+                  Sign up
+                </Link>
+              </div>
+            </CardFooter>
+          </Card>
+        </div>
+      </div>
+
+      <div className="hidden lg:col-span-2 lg:flex flex-col justify-between p-10 text-white dark:border-r">
+        <div className="flex items-center gap-2 text-lg font-medium">
+          <div className="flex h-8 w-8 items-center justify-center rounded-md bg-white text-zinc-900">
+            <Command className="h-5 w-5" />
+          </div>
+          Tandem
+        </div>
+        <div className="max-w-md">
+          <blockquote className="space-y-2">
+            <p className="text-lg font-medium leading-relaxed">
+              &ldquo;Simplicity is the ultimate sophistication. Welcome back to
+              your workspace.&rdquo;
+            </p>
+          </blockquote>
+        </div>
+      </div>
+    </div>
+  );
+}
+</file>
+
+<file path="apps/web/src/app/(auth)/sign-up/page.tsx">
+"use client";
+
+import { useState } from "react";
+import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { authClient } from "@/lib/auth-client";
+import { useRouter } from "next/navigation";
+import Link from "next/link";
+import { Command } from "lucide-react";
+import { toast } from "sonner";
+
+export default function SignUp() {
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [loading, setLoading] = useState(false);
+  const router = useRouter();
+
+  const handleSignUp = async () => {
+    setLoading(true);
+    await authClient.signUp.email(
+      {
+        email,
+        password,
+        name,
+      },
+      {
+        onSuccess: () => {
+          router.push("/dashboard");
+          toast.success("Account created successfully");
+        },
+        onError: (ctx) => {
+          toast.error(ctx.error.message);
+          setLoading(false);
+        },
+      }
+    );
+  };
+
+  return (
+    <div className="w-full lg:grid lg:min-h-screen lg:grid-cols-3 xl:min-h-screen">
+      <div className="flex items-center justify-center py-12 lg:col-span-1">
+        <div className="mx-auto w-[350px] space-y-6">
+          <Card className="border-0 shadow-none sm:border sm:shadow-sm">
+            <CardHeader>
+              <CardTitle className="text-2xl">Create an account</CardTitle>
+              <CardDescription>
+                Enter your email below to create your account
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="grid gap-4">
+              <div className="grid gap-2">
+                <Label htmlFor="name">Name</Label>
+                <Input
+                  id="name"
+                  type="text"
+                  placeholder="John Doe"
+                  required
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="email">Email</Label>
+                <Input
+                  id="email"
+                  type="email"
+                  placeholder="m@example.com"
+                  required
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="password">Password</Label>
+                <Input
+                  id="password"
+                  type="password"
+                  required
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                />
+              </div>
+            </CardContent>
+            <CardFooter className="flex flex-col gap-4">
+              <Button
+                className="w-full"
+                onClick={handleSignUp}
+                disabled={loading}
+              >
+                {loading ? "Creating account..." : "Sign Up"}
+              </Button>
+              <div className="text-center text-sm">
+                Already have an account?{" "}
+                <Link href="/sign-in" className="underline underline-offset-4">
+                  Sign in
+                </Link>
+              </div>
+            </CardFooter>
+          </Card>
+        </div>
+      </div>
+
+      <div className="hidden bg-zinc-900 lg:col-span-2 lg:flex flex-col justify-between p-10 text-white dark:border-r">
+        <div className="flex items-center gap-2 text-lg font-medium">
+          <div className="flex h-8 w-8 items-center justify-center rounded-md bg-white text-zinc-900">
+            <Command className="h-5 w-5" />
+          </div>
+          Tandem
+        </div>
+        <div className="max-w-md">
+          <blockquote className="space-y-2">
+            <p className="text-lg font-medium leading-relaxed">
+              &ldquo;The best way to predict the future is to create it. Join us
+              in building the next generation of software.&rdquo;
+            </p>
+          </blockquote>
+        </div>
+      </div>
+    </div>
+  );
+}
+</file>
+
+<file path="apps/web/src/app/dashboard/_components/project-card.tsx">
+"use client";
+
+import {
+  Card,
+  CardHeader,
+  CardTitle,
+  CardDescription,
+  CardFooter,
+} from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Github } from "lucide-react";
+
+const timeAgo = (date: string | Date) => {
+  const d = new Date(date);
+  if (isNaN(d.getTime())) return "Just Now";
+  return d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+};
+
+interface ProjectCardProps {
+  title: string;
+  description: string | null;
+  createdAt: string | Date;
+  githubRepoName?: string | null;
+  isOptimistic?: boolean;
+}
+
+export function ProjectCard({
+  title,
+  description,
+  createdAt,
+  githubRepoName,
+  isOptimistic,
+}: ProjectCardProps) {
+  return (
+    <Card
+      className={`group flex flex-col justify-between transition-all hover:border-primary/50 ${isOptimistic ? "opacity-70 animate-pulse" : ""}`}
+    >
+      <CardHeader>
+        <div className="flex items-start justify-between">
+          <CardTitle className="line-clamp-1 text-base">{title}</CardTitle>
+          {isOptimistic && (
+            <Badge variant="secondary" className="text-[10px] h-4">
+              Creating
+            </Badge>
+          )}
+        </div>
+
+        {githubRepoName && (
+          <a
+            href={`https://github.com/${githubRepoName}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex w-fit items-center gap-1.5 text-xs text-muted-foreground/80 font-mono mt-1 hover:text-primary hover:underline transition-colors"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <Github className="h-3 w-3" />
+            <span className="truncate">{githubRepoName}</span>
+          </a>
+        )}
+
+        <CardDescription className="line-clamp-2 min-h-[2.5em] mt-2">
+          {description || "No description provided."}
+        </CardDescription>
+      </CardHeader>
+      <CardFooter className="text-[10px] text-muted-foreground">
+        Created {timeAgo(createdAt)}
+      </CardFooter>
+    </Card>
+  );
+}
+</file>
+
+<file path="apps/web/src/app/dashboard/page.tsx">
+"use client";
+
+import { useOptimistic, startTransition } from "react";
+import { api } from "@/lib/eden";
+import {
+  useCreateProject,
+  useProjects,
+  type Project,
+} from "./_hooks/use-project";
+import { CreateProjectDialog } from "./_components/create-project-dialog";
+import { ProjectCard } from "./_components/project-card";
+import { Loader2 } from "lucide-react";
+import { ProjectCardSkeleton } from "./_components/project-card-skeleton";
+import { toast } from "sonner";
+
+export default function DashboardPage() {
+  const { data: projects, isLoading } = useProjects();
+  const { mutate: createProject, isPending: isCreating } = useCreateProject();
+
+  const handleCreateProject = async (data: {
+    title: string;
+    description: string;
+    githubRepoId: string;
+    githubRepoName: string;
+  }) => {
+    createProject(data, {
+      onSuccess: () => {
+        toast.success("Project created successfully");
+      },
+      onError: (e) => {
+        toast.error("Failed to create project", {
+          description: e.message,
+        });
+      },
+    });
+  };
+
+  return (
+    <div className="container mx-auto max-w-6xl space-y-8 p-4">
+      <div className="flex items-center justify-between border-b pb-6">
+        <div>
+          <h1 className="text-2xl font-medium tracking-tight">Projects</h1>
+          <p className="text-sm text-muted-foreground mt-1">
+            Manage and track your ongoing work.
+          </p>
+        </div>
+        <CreateProjectDialog onCreate={handleCreateProject} />
+      </div>
+
+      {isLoading ? (
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <ProjectCardSkeleton key={i} />
+          ))}
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          {projects?.length === 0 ? (
+            <div className="col-span-full flex h-64 flex-col items-center justify-center rounded-lg border border-dashed text-center">
+              <p className="text-sm text-muted-foreground">
+                No projects found.
+              </p>
+              <p className="text-xs text-muted-foreground/60">
+                Link a GitHub repository to get started.
+              </p>
+            </div>
+          ) : (
+            projects?.map((project) => (
+              <ProjectCard
+                key={project.id}
+                title={project.title}
+                description={project.description}
+                createdAt={project.createdAt}
+                githubRepoName={project.githubRepoName}
+              />
+            ))
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+</file>
+
+<file path="apps/web/src/components/app-sidebar.tsx">
+"use client";
+
+import {
+  Sidebar,
+  SidebarContent,
+  SidebarFooter,
+  SidebarHeader,
+  SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
+  SidebarGroup,
+  SidebarGroupContent,
+  SidebarGroupLabel,
+} from "@/components/ui/sidebar";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { authClient } from "@/lib/auth-client";
+import { useRouter } from "next/navigation";
+import {
+  IconCommand,
+  IconLayoutDashboard,
+  IconLogout,
+  IconSelector,
+} from "@tabler/icons-react";
+import { Skeleton } from "@/components/ui/skeleton";
+
+export function AppSidebar() {
+  const { data: session, isPending } = authClient.useSession();
+  const router = useRouter();
+
+  const handleSignOut = async () => {
+    await authClient.signOut();
+    router.push("/sign-up");
+  };
+
+  return (
+    <Sidebar>
+      <SidebarHeader>
+        <SidebarMenu>
+          <SidebarMenuItem>
+            <SidebarMenuButton
+              size="lg"
+              className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
+            >
+              <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground">
+                <IconCommand className="size-4" />
+              </div>
+              <div className="grid flex-1 text-left text-sm leading-tight">
+                <span className="truncate font-semibold">Tandem</span>
+                <span className="truncate text-xs">Project Management</span>
+              </div>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        </SidebarMenu>
+      </SidebarHeader>
+
+      <SidebarContent>
+        <SidebarGroup>
+          <SidebarGroupLabel>Platform</SidebarGroupLabel>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              <SidebarMenuItem>
+                <SidebarMenuButton asChild tooltip="Dashboard">
+                  <a href="/dashboard">
+                    <IconLayoutDashboard />
+                    <span>Dashboard</span>
+                  </a>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+      </SidebarContent>
+
+      <SidebarFooter>
+        <SidebarMenu>
+          <SidebarMenuItem>
+            {isPending ? (
+              <div className="flex items-center gap-2 p-2">
+                <Skeleton className="h-8 w-8 rounded-lg" />
+                <div className="flex flex-col gap-1">
+                  <Skeleton className="h-3 w-20" />
+                  <Skeleton className="h-2 w-16" />
+                </div>
+              </div>
+            ) : (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <SidebarMenuButton
+                    size="lg"
+                    className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
+                  >
+                    <Avatar className="h-8 w-8 rounded-lg">
+                      <AvatarImage
+                        src={session?.user?.image || ""}
+                        alt={session?.user?.name || ""}
+                      />
+                      <AvatarFallback className="rounded-lg">
+                        {session?.user?.name?.slice(0, 2).toUpperCase() || "CN"}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div className="grid flex-1 text-left text-sm leading-tight">
+                      <span className="truncate font-semibold">
+                        {session?.user?.name}
+                      </span>
+                      <span className="truncate text-xs">
+                        {session?.user?.email}
+                      </span>
+                    </div>
+                    <IconSelector className="ml-auto size-4" />
+                  </SidebarMenuButton>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent
+                  className="w-[--radix-dropdown-menu-trigger-width] min-w-56 rounded-lg"
+                  side="bottom"
+                  align="end"
+                  sideOffset={4}
+                >
+                  <DropdownMenuItem onClick={handleSignOut}>
+                    <IconLogout className="mr-2 h-4 w-4" />
+                    Log out
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
+          </SidebarMenuItem>
+        </SidebarMenu>
+      </SidebarFooter>
+    </Sidebar>
+  );
+}
+</file>
+
+<file path="apps/web/src/middleware.ts">
+import { NextResponse } from "next/server";
+import { NextRequest } from "next/server";
+
+export function middleware(request: NextRequest) {
+  const sessionToken = request.cookies.get("better-auth.session_token");
+  const { pathname } = request.nextUrl;
+
+  const authRoutes = ["/sign-in", "/sign-up", "/"];
+  const isAuthRoute = authRoutes.includes(pathname);
+  const isRoot = pathname === "/";
+
+  const isProtectedRoute = pathname.startsWith("/dashboard");
+
+  if (sessionToken && (isAuthRoute || isRoot)) {
+    return NextResponse.redirect(new URL("/dashboard", request.url));
+  }
+
+  if (!sessionToken && isProtectedRoute) {
+    return NextResponse.redirect(new URL("/sign-in", request.url));
+  }
+
+  return NextResponse.next();
+}
+
+export const config = {
+  matcher: ["/((?!api|_next/static|_next/image|favicon.ico).*)"],
+};
+</file>
+
 <file path="apps/api/src/modules/auth/auth.ts">
 import { betterAuth } from "better-auth";
 import { prismaAdapter } from "better-auth/adapters/prisma";
@@ -5736,6 +5856,7 @@ export const auth = betterAuth({
     github: {
       clientId: process.env.GITHUB_CLIENT_ID as string,
       clientSecret: process.env.GITHUB_CLIENT_SECRET as string,
+      scope: ["read:user", "read:org", "repo"],
     },
   },
   baseURL: "http://localhost:3000/api/auth",
@@ -5743,53 +5864,346 @@ export const auth = betterAuth({
 });
 </file>
 
-<file path="apps/web/package.json">
-{
-  "name": "web",
-  "version": "0.1.0",
-  "private": true,
-  "scripts": {
-    "dev": "next dev",
-    "build": "next build",
-    "start": "next start",
-    "lint": "eslint"
-  },
-  "dependencies": {
-    "@base-ui/react": "^1.0.0",
-    "@elysiajs/eden": "^1.4.6",
-    "@tabler/icons-react": "^3.36.1",
-    "@tandem/api": "workspace:*",
-    "better-auth": "^1.4.10",
-    "class-variance-authority": "^0.7.1",
-    "clsx": "^2.1.1",
-    "date-fns": "^4.1.0",
-    "lucide-react": "^0.562.0",
-    "next": "16.1.1",
-    "radix-ui": "^1.4.3",
-    "react": "19.2.3",
-    "react-dom": "19.2.3",
-    "shadcn": "^3.6.2",
-    "tailwind-merge": "^3.4.0",
-    "tw-animate-css": "^1.4.0"
-  },
-  "devDependencies": {
-    "@tailwindcss/postcss": "^4",
-    "@types/node": "^20",
-    "@types/react": "^19",
-    "@types/react-dom": "^19",
-    "eslint": "^9",
-    "eslint-config-next": "16.1.1",
-    "tailwindcss": "^4",
-    "typescript": "^5"
-  },
-  "ignoreScripts": [
-    "sharp",
-    "unrs-resolver"
-  ],
-  "trustedDependencies": [
-    "sharp",
-    "unrs-resolver"
-  ]
+<file path="apps/web/src/app/dashboard/_components/create-project-dialog.tsx">
+"use client";
+
+import { useState } from "react";
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  Plus,
+  Github,
+  Loader2,
+  Lock,
+  LockOpen,
+  Slash,
+  ChevronsUpDown,
+  Check,
+} from "lucide-react";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import {
+  useGithubOwners,
+  useGithubRepos,
+  type Repo,
+} from "../_hooks/use-github";
+import { cn } from "@/lib/utils";
+
+interface CreateProjectDialogProps {
+  onCreate: (project: {
+    title: string;
+    description: string;
+    githubRepoId: string;
+    githubRepoName: string;
+  }) => void;
+  isCreating: boolean;
+}
+
+export function CreateProjectDialog({
+  onCreate,
+  isCreating,
+}: CreateProjectDialogProps) {
+  const [open, setOpen] = useState(false);
+  const [title, setTitle] = useState("");
+  const [description, setDescription] = useState("");
+
+  const [selectedOwner, setSelectedOwner] = useState<string>("");
+  const [selectedRepoId, setSelectedRepoId] = useState<string>("");
+  const [selectedRepo, setSelectedRepo] = useState<Repo | null>(null);
+
+  const [repoOpen, setRepoOpen] = useState(false);
+
+  const { data: owners, isLoading: loadingOwners } = useGithubOwners(open);
+  const { data: repos, isLoading: loadingRepos } = useGithubRepos(
+    selectedOwner,
+    open
+  );
+
+  const handleRepoSelect = (currentValue: string) => {
+    const repo = repos?.find((r) => r.id === currentValue);
+
+    if (repo) {
+      setSelectedRepoId(currentValue);
+      setSelectedRepo(repo);
+      setTitle(repo.name);
+      setDescription(repo.description || "");
+      setRepoOpen(false);
+    }
+  };
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedRepo) return;
+
+    onCreate({
+      title,
+      description,
+      githubRepoId: selectedRepo.id,
+      githubRepoName: selectedRepo.fullName,
+    });
+    setOpen(false);
+
+    setTitle("");
+    setDescription("");
+    setSelectedRepoId("");
+    setSelectedRepo(null);
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button className="gap-2">
+          <Plus className="h-4 w-4" />
+          Create Project
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="sm:max-w-[550px]">
+        <form onSubmit={handleSubmit}>
+          <DialogHeader>
+            <DialogTitle>Link Repository</DialogTitle>
+            <DialogDescription>
+              Select a GitHub repository to track tasks.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="grid gap-5 py-5">
+            <div className="flex items-start gap-2">
+              <div className="grid gap-2 flex-1 min-w-0">
+                <Label>Owner</Label>
+                {loadingOwners ? (
+                  <Skeleton className="h-9 w-full" />
+                ) : (
+                  <Select
+                    value={selectedOwner}
+                    onValueChange={(val) => {
+                      setSelectedOwner(val);
+                      setSelectedRepoId("");
+                      setSelectedRepo(null);
+                    }}
+                  >
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder="Owner" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {owners?.map((owner) => (
+                        <SelectItem key={owner.login} value={owner.login}>
+                          <div className="flex items-center gap-2">
+                            <Avatar className="h-4 w-4">
+                              <AvatarImage src={owner.avatarUrl} />
+                              <AvatarFallback>
+                                {owner.login.slice(0, 1)}
+                              </AvatarFallback>
+                            </Avatar>
+                            <span className="truncate">{owner.login}</span>
+                          </div>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+              </div>
+
+              <div className="flex items-center h-[62px] text-muted-foreground/50">
+                <Slash className="h-4 w-4 -rotate-12" />
+              </div>
+
+              <div className="grid gap-2 flex-1 min-w-0">
+                <Label>Repository</Label>
+                {loadingRepos ? (
+                  <div className="space-y-2">
+                    <Skeleton className="h-9 w-full" />
+                  </div>
+                ) : (
+                  <Popover open={repoOpen} onOpenChange={setRepoOpen}>
+                    <PopoverTrigger asChild>
+                      <Button
+                        variant="outline"
+                        role="combobox"
+                        aria-expanded={repoOpen}
+                        disabled={!selectedOwner}
+                        className="w-full justify-between px-3 font-normal"
+                      >
+                        {selectedRepo ? (
+                          <div className="flex items-center gap-2 truncate">
+                            {selectedRepo.private ? (
+                              <Lock className="h-3 w-3 text-muted-foreground shrink-0" />
+                            ) : (
+                              <LockOpen className="h-3 w-3 text-muted-foreground shrink-0" />
+                            )}
+                            <span className="truncate">
+                              {selectedRepo.name}
+                            </span>
+                          </div>
+                        ) : (
+                          <span className="text-muted-foreground">
+                            Select repository...
+                          </span>
+                        )}
+                        <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-[250px] p-0" align="start">
+                      <Command>
+                        <CommandInput placeholder="Search repo..." />
+                        <CommandList>
+                          <CommandEmpty>No repo found.</CommandEmpty>
+                          <CommandGroup>
+                            {repos?.map((repo) => (
+                              <CommandItem
+                                key={repo.id}
+                                value={repo.name}
+                                onSelect={() => handleRepoSelect(repo.id)}
+                              >
+                                <div className="flex items-center gap-2 truncate w-full">
+                                  {repo.private ? (
+                                    <Lock className="h-3 w-3 text-muted-foreground shrink-0" />
+                                  ) : (
+                                    <LockOpen className="h-3 w-3 text-muted-foreground shrink-0" />
+                                  )}
+                                  <span className="truncate">{repo.name}</span>
+                                </div>
+                                <Check
+                                  className={cn(
+                                    "ml-auto h-4 w-4",
+                                    selectedRepoId === repo.id
+                                      ? "opacity-100"
+                                      : "opacity-0"
+                                  )}
+                                />
+                              </CommandItem>
+                            ))}
+                          </CommandGroup>
+                        </CommandList>
+                      </Command>
+                    </PopoverContent>
+                  </Popover>
+                )}
+              </div>
+            </div>
+
+            {selectedRepo && (
+              <div className="space-y-4 pt-2 border-t">
+                <div className="grid gap-2">
+                  <Label htmlFor="title">Project Title</Label>
+                  <Input
+                    id="title"
+                    value={title}
+                    onChange={(e) => setTitle(e.target.value)}
+                    required
+                  />
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="description">Description</Label>
+                  <Textarea
+                    id="description"
+                    value={description}
+                    onChange={(e) => setDescription(e.target.value)}
+                    className="min-h-[80px]"
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button type="submit" disabled={isCreating || !selectedRepo}>
+              {isCreating ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Linking...
+                </>
+              ) : (
+                <>
+                  <Github className="mr-2 h-4 w-4" />
+                  Create Project
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+</file>
+
+<file path="apps/web/src/app/layout.tsx">
+import type { Metadata } from "next";
+import { Geist, Geist_Mono, Inter, Roboto } from "next/font/google";
+import "./globals.css";
+import { cn } from "@/lib/utils";
+import { Providers } from "@/components/providers";
+import { Toaster } from "@/components/ui/sonner";
+
+const roboto = Roboto({ subsets: ["latin"], variable: "--font-sans" });
+
+const geistSans = Geist({
+  variable: "--font-geist-sans",
+  subsets: ["latin"],
+});
+
+const geistMono = Geist_Mono({
+  variable: "--font-geist-mono",
+  subsets: ["latin"],
+});
+
+export const metadata: Metadata = {
+  title: "Create Next App",
+  description: "Generated by create next app",
+};
+
+export default function RootLayout({
+  children,
+}: Readonly<{
+  children: React.ReactNode;
+}>) {
+  return (
+    <html
+      lang="en"
+      className={cn("dark", roboto.variable, roboto.variable)}
+      suppressHydrationWarning
+    >
+      <body
+        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
+      >
+        <Providers>
+          {children}
+          <Toaster />
+        </Providers>
+      </body>
+    </html>
+  );
 }
 </file>
 
@@ -5821,6 +6235,60 @@ export const auth = betterAuth({
     "@elysiajs/cors": "^1.4.1",
     "elysia": "^1.4.21"
   }
+}
+</file>
+
+<file path="apps/web/package.json">
+{
+  "name": "web",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint"
+  },
+  "dependencies": {
+    "@base-ui/react": "^1.0.0",
+    "@elysiajs/eden": "^1.4.6",
+    "@tabler/icons-react": "^3.36.1",
+    "@tandem/api": "workspace:*",
+    "@tanstack/react-query": "^5.90.16",
+    "better-auth": "^1.4.10",
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2.1.1",
+    "cmdk": "^1.1.1",
+    "date-fns": "^4.1.0",
+    "lucide-react": "^0.562.0",
+    "next": "16.1.1",
+    "next-themes": "^0.4.6",
+    "radix-ui": "^1.4.3",
+    "react": "19.2.3",
+    "react-dom": "19.2.3",
+    "shadcn": "^3.6.2",
+    "sonner": "^2.0.7",
+    "tailwind-merge": "^3.4.0",
+    "tw-animate-css": "^1.4.0"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4",
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "eslint": "^9",
+    "eslint-config-next": "16.1.1",
+    "tailwindcss": "^4",
+    "typescript": "^5"
+  },
+  "ignoreScripts": [
+    "sharp",
+    "unrs-resolver"
+  ],
+  "trustedDependencies": [
+    "sharp",
+    "unrs-resolver"
+  ]
 }
 </file>
 

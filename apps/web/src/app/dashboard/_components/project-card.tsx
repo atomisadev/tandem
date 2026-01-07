@@ -9,6 +9,8 @@ import {
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Github } from "lucide-react";
+import Link from "next/link";
+import { cn } from "@/lib/utils";
 
 const timeAgo = (date: string | Date) => {
   const d = new Date(date);
@@ -17,6 +19,7 @@ const timeAgo = (date: string | Date) => {
 };
 
 interface ProjectCardProps {
+  id: string;
   title: string;
   description: string | null;
   createdAt: string | Date;
@@ -25,15 +28,19 @@ interface ProjectCardProps {
 }
 
 export function ProjectCard({
+  id,
   title,
   description,
   createdAt,
   githubRepoName,
   isOptimistic,
 }: ProjectCardProps) {
-  return (
+  const Content = (
     <Card
-      className={`group flex flex-col justify-between transition-all hover:border-primary/50 ${isOptimistic ? "opacity-70 animate-pulse" : ""}`}
+      className={cn(
+        "group flex flex-col justify-between transition-all hover:border-primary/50 h-full",
+        isOptimistic && "opacity-70 animate-pulse"
+      )}
     >
       <CardHeader>
         <div className="flex items-start justify-between">
@@ -46,16 +53,10 @@ export function ProjectCard({
         </div>
 
         {githubRepoName && (
-          <a
-            href={`https://github.com/${githubRepoName}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex w-fit items-center gap-1.5 text-xs text-muted-foreground/80 font-mono mt-1 hover:text-primary hover:underline transition-colors"
-            onClick={(e) => e.stopPropagation()}
-          >
+          <div className="flex w-fit items-center gap-1.5 text-xs text-muted-foreground/80 font-mono mt-1">
             <Github className="h-3 w-3" />
             <span className="truncate">{githubRepoName}</span>
-          </a>
+          </div>
         )}
 
         <CardDescription className="line-clamp-2 min-h-[2.5em] mt-2">
@@ -66,5 +67,15 @@ export function ProjectCard({
         Created {timeAgo(createdAt)}
       </CardFooter>
     </Card>
+  );
+
+  if (isOptimistic) {
+    return Content;
+  }
+
+  return (
+    <Link href={`/dashboard/${id}`} className="block h-full">
+      {Content}
+    </Link>
   );
 }

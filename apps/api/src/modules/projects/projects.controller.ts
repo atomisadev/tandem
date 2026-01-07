@@ -14,6 +14,26 @@ export const projectsController = new Elysia({ prefix: "/api/projects" })
     }
     return ProjectsService.getMyProjects(session.user.id);
   })
+  .get("/:id", async ({ request, params, set }) => {
+    const session = await auth.api.getSession({
+      headers: request.headers,
+    });
+
+    if (!session) {
+      set.status = 401;
+      return "Unauthorized";
+    }
+
+    try {
+      return await ProjectsService.getProject(session.user.id, params.id);
+    } catch (e: any) {
+      if (e.message === "Project not found") {
+        set.status = 404;
+        return e.message;
+      }
+      throw e;
+    }
+  })
   .post("/", async ({ request, body, set }) => {
     const session = await auth.api.getSession({
       headers: request.headers,

@@ -22,6 +22,18 @@ export function useProjects() {
   });
 }
 
+export function useProject(projectId: string) {
+  return useQuery({
+    queryKey: ["project", projectId],
+    queryFn: async () => {
+      const { data, error } = await api.api.projects[projectId].get();
+      if (error) throw error;
+      return data as unknown as Project;
+    },
+    enabled: !!projectId,
+  });
+}
+
 export function useCreateProject() {
   const queryClient = useQueryClient();
 

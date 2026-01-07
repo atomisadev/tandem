@@ -48,4 +48,37 @@ export class ProjectsService {
       },
     });
   }
+
+  static async getProject(userId: string, projectId: string) {
+    const project = await prisma.project.findFirst({
+      where: {
+        id: projectId,
+        members: {
+          some: {
+            userId,
+          },
+        },
+      },
+      include: {
+        members: {
+          include: {
+            user: {
+              select: {
+                id: true,
+                name: true,
+                image: true,
+                email true,
+              }
+            }
+          }
+        }
+      }
+    });
+
+    if (!project) {
+      throw new Error("Project not found");
+    }
+
+    return project;
+  }
 }
