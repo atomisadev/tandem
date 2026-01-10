@@ -11,6 +11,7 @@ import {
   SidebarGroup,
   SidebarGroupContent,
   SidebarGroupLabel,
+  SidebarSeparator,
 } from "@/components/ui/sidebar";
 import {
   DropdownMenu,
@@ -26,6 +27,7 @@ import {
   IconLayoutDashboard,
   IconLogout,
   IconSelector,
+  IconShieldLock,
 } from "@tabler/icons-react";
 import { Skeleton } from "@/components/ui/skeleton";
 
@@ -37,6 +39,8 @@ export function AppSidebar() {
     await authClient.signOut();
     router.push("/sign-up");
   };
+
+  const role = (session?.user as any)?.role;
 
   return (
     <Sidebar>
@@ -75,6 +79,27 @@ export function AppSidebar() {
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
+
+        {role === "ADMIN" && (
+          <>
+            <SidebarSeparator className="mx-2" />
+            <SidebarGroup>
+              <SidebarGroupLabel>Admin</SidebarGroupLabel>
+              <SidebarGroupContent>
+                <SidebarMenu>
+                  <SidebarMenuItem>
+                    <SidebarMenuButton asChild tooltip="Whitelist">
+                      <a href="/dashboard/admin/whitelist">
+                        <IconShieldLock />
+                        <span>Whitelisted Users</span>
+                      </a>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                </SidebarMenu>
+              </SidebarGroupContent>
+            </SidebarGroup>
+          </>
+        )}
       </SidebarContent>
 
       <SidebarFooter>

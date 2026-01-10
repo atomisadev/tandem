@@ -113,18 +113,18 @@ export default function LandingPage() {
           <nav className="flex items-center gap-6">
             <Link
               href="/sign-in"
-              className="hidden sm:block text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+              className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors h-10 px-4 rounded-full"
             >
-              Sign In
+              Login
             </Link>
-            <Link href="/sign-up">
+            <RequestAccessDialog>
               <Button
                 size="sm"
                 className="h-10 rounded-full px-6 bg-foreground text-background hover:bg-foreground/90 transition-all hover:scale-105 font-medium"
               >
                 Request Access
               </Button>
-            </Link>
+            </RequestAccessDialog>
           </nav>
         </div>
       </header>
