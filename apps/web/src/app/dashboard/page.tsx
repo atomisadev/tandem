@@ -23,7 +23,7 @@ export default function DashboardPage() {
     githubRepoId: string;
     githubRepoName: string;
   }) => {
-    createProject(data, {
+    createProject(data as any, {
       onSuccess: () => {
         toast.success("Project created successfully");
       },
@@ -44,7 +44,10 @@ export default function DashboardPage() {
             Manage and track your ongoing work.
           </p>
         </div>
-        <CreateProjectDialog onCreate={handleCreateProject} />
+        <CreateProjectDialog
+          isCreating={isCreating}
+          onCreate={handleCreateProject}
+        />
       </div>
 
       {isLoading ? (

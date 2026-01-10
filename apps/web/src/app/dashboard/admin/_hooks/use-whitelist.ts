@@ -25,7 +25,9 @@ export function useAddToWhitelist() {
 
   return useMutation({
     mutationFn: async (email: string) => {
-      const { data, error } = await api.api.admin.whitelist.post({ email });
+      const { data, error } = await api.api.admin.whitelist.post({
+        email: email as any,
+      });
       if (error) throw error;
       return data;
     },

@@ -61,12 +61,11 @@ export function RequestAccessDialog({ children }: RequestAccessDialogProps) {
                 Email Address
               </Label>
               <div className="relative">
-                <Mail className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
                 <Input
                   id="email"
                   type="email"
                   placeholder="developer@company.com"
-                  className="pl-9 bg-white/5 border-white/10 focus:border-primary/50"
+                  className="bg-white/5 border-white/10 focus:border-primary/50"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   required

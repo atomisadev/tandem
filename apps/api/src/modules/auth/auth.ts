@@ -23,6 +23,9 @@ export const auth = betterAuth({
       scope: ["read:user", "read:org", "repo"],
     },
   },
+  pages: {
+    error: "http://localhost:3000/access-denied",
+  },
   databaseHooks: {
     user: {
       create: {
@@ -38,7 +41,6 @@ export const auth = betterAuth({
               message: "Access denied. You are not on the whitelist.",
             });
           }
-
           return { data: user };
         },
       },
