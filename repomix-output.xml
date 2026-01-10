@@ -187,32 +187,6 @@ turbo.json
 <files>
 This section contains the contents of the repository's files.
 
-<file path="apps/api/prisma/migrations/20260107232559_update_task_schema/migration.sql">
-/*
-  Warnings:
-
-  - You are about to drop the column `branchName` on the `task` table. All the data in the column will be lost.
-  - You are about to drop the column `prNumber` on the `task` table. All the data in the column will be lost.
-  - You are about to drop the column `prStatus` on the `task` table. All the data in the column will be lost.
-
-*/
--- CreateEnum
-CREATE TYPE "Priority" AS ENUM ('low', 'medium', 'high');
-
--- CreateEnum
-CREATE TYPE "PrStatus" AS ENUM ('open', 'merged', 'closed');
-
--- AlterTable
-ALTER TABLE "task" DROP COLUMN "branchName",
-DROP COLUMN "prNumber",
-DROP COLUMN "prStatus",
-ADD COLUMN     "githubBranch" TEXT,
-ADD COLUMN     "githubPrId" INTEGER,
-ADD COLUMN     "githubPrStatus" "PrStatus",
-ADD COLUMN     "priority" "Priority" NOT NULL DEFAULT 'medium',
-ADD COLUMN     "tags" TEXT[];
-</file>
-
 <file path="apps/api/prisma/migrations/20260104234343_init/migration.sql">
 -- CreateTable
 CREATE TABLE "user" (
@@ -350,6 +324,32 @@ ALTER TABLE "project" ADD COLUMN "githubRepoName" TEXT;
 ALTER TABLE "task" ADD COLUMN     "branchName" TEXT,
 ADD COLUMN     "prNumber" INTEGER,
 ADD COLUMN     "prStatus" TEXT;
+</file>
+
+<file path="apps/api/prisma/migrations/20260107232559_update_task_schema/migration.sql">
+/*
+  Warnings:
+
+  - You are about to drop the column `branchName` on the `task` table. All the data in the column will be lost.
+  - You are about to drop the column `prNumber` on the `task` table. All the data in the column will be lost.
+  - You are about to drop the column `prStatus` on the `task` table. All the data in the column will be lost.
+
+*/
+-- CreateEnum
+CREATE TYPE "Priority" AS ENUM ('low', 'medium', 'high');
+
+-- CreateEnum
+CREATE TYPE "PrStatus" AS ENUM ('open', 'merged', 'closed');
+
+-- AlterTable
+ALTER TABLE "task" DROP COLUMN "branchName",
+DROP COLUMN "prNumber",
+DROP COLUMN "prStatus",
+ADD COLUMN     "githubBranch" TEXT,
+ADD COLUMN     "githubPrId" INTEGER,
+ADD COLUMN     "githubPrStatus" "PrStatus",
+ADD COLUMN     "priority" "Priority" NOT NULL DEFAULT 'medium',
+ADD COLUMN     "tags" TEXT[];
 </file>
 
 <file path="apps/api/prisma/migrations/migration_lock.toml">
@@ -3827,38 +3827,6 @@ app.listen(config.port, () => {
 });
 </file>
 
-<file path="apps/api/package.json">
-{
-  "name": "@tandem/api",
-  "version": "0.0.0",
-  "module": "src/index.ts",
-  "type": "module",
-  "private": true,
-  "scripts": {
-    "dev": "bun run --watch src/index.ts",
-    "build": "bun build src/index.ts --outdir dist --target bun",
-    "db:generate": "bunx prisma generate",
-    "db:migrate": "bunx prisma migrate dev"
-  },
-  "dependencies": {
-    "@elysiajs/cors": "latest",
-    "@prisma/client": "5",
-    "better-auth": "^1.4.10",
-    "elysia": "latest",
-    "octokit": "^5.0.5"
-  },
-  "devDependencies": {
-    "bun-types": "latest",
-    "prisma": "5"
-  },
-  "peerDependencies": {
-    "typescript": "^5"
-  },
-  "main": "src/index.ts",
-  "types": "src/index.ts"
-}
-</file>
-
 <file path="apps/web/public/globe.svg">
 <svg fill="none" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><g clip-path="url(#a)"><path fill-rule="evenodd" clip-rule="evenodd" d="M10.27 14.1a6.5 6.5 0 0 0 3.67-3.45q-1.24.21-2.7.34-.31 1.83-.97 3.1M8 16A8 8 0 1 0 8 0a8 8 0 0 0 0 16m.48-1.52a7 7 0 0 1-.96 0H7.5a4 4 0 0 1-.84-1.32q-.38-.89-.63-2.08a40 40 0 0 0 3.92 0q-.25 1.2-.63 2.08a4 4 0 0 1-.84 1.31zm2.94-4.76q1.66-.15 2.95-.43a7 7 0 0 0 0-2.58q-1.3-.27-2.95-.43a18 18 0 0 1 0 3.44m-1.27-3.54a17 17 0 0 1 0 3.64 39 39 0 0 1-4.3 0 17 17 0 0 1 0-3.64 39 39 0 0 1 4.3 0m1.1-1.17q1.45.13 2.69.34a6.5 6.5 0 0 0-3.67-3.44q.65 1.26.98 3.1M8.48 1.5l.01.02q.41.37.84 1.31.38.89.63 2.08a40 40 0 0 0-3.92 0q.25-1.2.63-2.08a4 4 0 0 1 .85-1.32 7 7 0 0 1 .96 0m-2.75.4a6.5 6.5 0 0 0-3.67 3.44 29 29 0 0 1 2.7-.34q.31-1.83.97-3.1M4.58 6.28q-1.66.16-2.95.43a7 7 0 0 0 0 2.58q1.3.27 2.95.43a18 18 0 0 1 0-3.44m.17 4.71q-1.45-.12-2.69-.34a6.5 6.5 0 0 0 3.67 3.44q-.65-1.27-.98-3.1" fill="#666"/></g><defs><clipPath id="a"><path fill="#fff" d="M0 0h16v16H0z"/></clipPath></defs></svg>
 </file>
@@ -5132,152 +5100,6 @@ Learn more about the power of Turborepo:
 - [CLI Usage](https://turborepo.com/docs/reference/command-line-reference)
 </file>
 
-<file path="apps/api/prisma/schema.prisma">
-datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
-}
-
-generator client {
-  provider = "prisma-client-js"
-}
-
-model User {
-  id            String   @id
-  name          String
-  email         String
-  emailVerified Boolean
-  image         String?
-  createdAt     DateTime
-  updatedAt     DateTime
-
-  sessions Session[]
-  accounts Account[]
-
-  members       Member[]
-  assignedTasks Task[]
-
-  @@unique([email])
-  @@map("user")
-}
-
-model Session {
-  id        String   @id
-  userId    String
-  token     String
-  expiresAt DateTime
-  ipAddress String?
-  userAgent String?
-  createdAt DateTime
-  updatedAt DateTime
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@unique([token])
-  @@map("session")
-}
-
-model Account {
-  id                    String    @id
-  userId                String
-  accountId             String
-  providerId            String
-  accessToken           String?
-  refreshToken          String?
-  accessTokenExpiresAt  DateTime?
-  refreshTokenExpiresAt DateTime?
-  scope                 String?
-  password              String?
-  createdAt             DateTime
-  updatedAt             DateTime
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@map("account")
-}
-
-model Verification {
-  id         String    @id
-  identifier String
-  value      String
-  expiresAt  DateTime
-  createdAt  DateTime?
-  updatedAt  DateTime?
-
-  @@map("verification")
-}
-
-model Project {
-  id          String  @id @default(cuid())
-  title       String
-  description String?
-
-  githubRepoId   String?
-  githubRepoName String?
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  members Member[]
-  tasks   Task[]
-
-  @@map("project")
-}
-
-model Member {
-  id        String   @id @default(cuid())
-  userId    String
-  projectId String
-  role      String   @default("MEMBER")
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
-  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
-
-  @@unique([userId, projectId])
-  @@map("member")
-}
-
-enum Priority {
-  low
-  medium
-  high
-}
-
-enum PrStatus {
-  open
-  merged
-  closed
-}
-
-model Task {
-  id          String  @id @default(cuid())
-  title       String
-  description String?
-  status      String  @default("todo")
-  order       Float   @default(0)
-
-  priority Priority @default(medium)
-  tags     String[]
-
-  githubBranch   String?
-  githubPrId     Int?
-  githubPrStatus PrStatus?
-
-  projectId String
-  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
-
-  assignedToUserId String?
-  assignedTo       User?   @relation(fields: [assignedToUserId], references: [id])
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@map("task")
-}
-</file>
-
 <file path="apps/api/src/modules/index.ts">
 import { Elysia } from "elysia";
 import { statusController } from "./status/status.controller";
@@ -5290,6 +5112,38 @@ export const modules = new Elysia()
   .use(authController)
   .use(projectsController)
   .use(githubController);
+</file>
+
+<file path="apps/api/package.json">
+{
+  "name": "@tandem/api",
+  "version": "0.0.0",
+  "module": "src/index.ts",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "dev": "bun run --watch src/index.ts",
+    "build": "bun build src/index.ts --outdir dist --target bun",
+    "db:generate": "bunx prisma generate",
+    "db:migrate": "bunx prisma migrate dev"
+  },
+  "dependencies": {
+    "@elysiajs/cors": "latest",
+    "@prisma/client": "5",
+    "better-auth": "^1.4.10",
+    "elysia": "latest",
+    "octokit": "^5.0.5"
+  },
+  "devDependencies": {
+    "bun-types": "latest",
+    "prisma": "5"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  },
+  "main": "src/index.ts",
+  "types": "src/index.ts"
+}
 </file>
 
 <file path="apps/web/src/app/(auth)/sign-in/page.tsx">
@@ -5525,385 +5379,6 @@ export default function SignUp() {
 }
 </file>
 
-<file path="apps/web/src/app/dashboard/[projectId]/_components/kanban-board.tsx">
-"use client";
-
-import { useState, useEffect } from "react";
-import {
-  DndContext,
-  DragOverlay,
-  closestCorners,
-  KeyboardSensor,
-  PointerSensor,
-  useSensor,
-  useSensors,
-  DragStartEvent,
-  DragOverEvent,
-  DragEndEvent,
-} from "@dnd-kit/core";
-import {
-  arrayMove,
-  SortableContext,
-  sortableKeyboardCoordinates,
-  verticalListSortingStrategy,
-  useSortable,
-} from "@dnd-kit/sortable";
-import { CSS } from "@dnd-kit/utilities";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Plus } from "lucide-react";
-import { cn } from "@/lib/utils";
-import type { Task } from "../../_hooks/use-project";
-import { useCreateTask, useUpdateTask } from "../../_hooks/use-project";
-import { CreateTaskDialog } from "./create-task-dialog";
-import { toast } from "sonner";
-
-interface KanbanBoardProps {
-  projectId: string;
-  tasks: Task[];
-  onTaskClick: (task: Task) => void;
-}
-
-type ColumnType = "todo" | "in-progress" | "done";
-
-const COLUMNS: { id: ColumnType; title: string }[] = [
-  { id: "todo", title: "To Do" },
-  { id: "in-progress", title: "In Progress" },
-  { id: "done", title: "Done" },
-];
-
-export function KanbanBoard({
-  projectId,
-  tasks: initialTasks,
-  onTaskClick,
-}: KanbanBoardProps) {
-  // Sort tasks by order initially to ensure they align with backend
-  const [tasks, setTasks] = useState<Task[]>(
-    [...initialTasks].sort((a, b) => a.order - b.order)
-  );
-  const [activeId, setActiveId] = useState<string | null>(null);
-
-  // Dialog state
-  const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [activeColId, setActiveColId] = useState<string>("todo");
-
-  // Mutations
-  const { mutateAsync: createTask } = useCreateTask();
-  const { mutate: updateTask } = useUpdateTask();
-
-  useEffect(() => {
-    // When props update (e.g. after refetch), sync state
-    setTasks([...initialTasks].sort((a, b) => a.order - b.order));
-  }, [initialTasks]);
-
-  const sensors = useSensors(
-    useSensor(PointerSensor, {
-      activationConstraint: {
-        distance: 8,
-      },
-    }),
-    useSensor(KeyboardSensor, {
-      coordinateGetter: sortableKeyboardCoordinates,
-    })
-  );
-
-  const handleDragStart = (event: DragStartEvent) => {
-    setActiveId(event.active.id as string);
-  };
-
-  const handleDragOver = (event: DragOverEvent) => {
-    const { active, over } = event;
-    if (!over) return;
-
-    const activeId = active.id;
-    const overId = over.id;
-
-    if (activeId === overId) return;
-
-    const isActiveTask = active.data.current?.type === "Task";
-    const isOverTask = over.data.current?.type === "Task";
-    const isOverColumn = over.data.current?.type === "Column";
-
-    if (!isActiveTask) return;
-
-    // Scenario 1: Dragging a task over another task
-    if (isActiveTask && isOverTask) {
-      setTasks((tasks) => {
-        const activeIndex = tasks.findIndex((t) => t.id === activeId);
-        const overIndex = tasks.findIndex((t) => t.id === overId);
-
-        if (tasks[activeIndex].status !== tasks[overIndex].status) {
-          const newTasks = [...tasks];
-          newTasks[activeIndex] = {
-            ...newTasks[activeIndex],
-            status: tasks[overIndex].status,
-          };
-          return arrayMove(newTasks, activeIndex, overIndex);
-        }
-
-        return arrayMove(tasks, activeIndex, overIndex);
-      });
-    }
-
-    // Scenario 2: Dragging a task over a column (empty or not)
-    if (isActiveTask && isOverColumn) {
-      setTasks((tasks) => {
-        const activeIndex = tasks.findIndex((t) => t.id === activeId);
-        const newTasks = [...tasks];
-
-        if (newTasks[activeIndex].status !== overId) {
-          newTasks[activeIndex] = {
-            ...newTasks[activeIndex],
-            status: overId as string,
-          };
-          return arrayMove(newTasks, activeIndex, activeIndex);
-        }
-        return newTasks;
-      });
-    }
-  };
-
-  const handleDragEnd = (event: DragEndEvent) => {
-    const { active, over } = event;
-    const activeId = active.id as string;
-    const overId = over ? (over.id as string) : null;
-
-    if (!overId) {
-      setActiveId(null);
-      return;
-    }
-
-    const task = tasks.find((t) => t.id === activeId);
-    if (!task) {
-      setActiveId(null);
-      return;
-    }
-
-    // 1. Identify the new status from the local state (updated by handleDragOver)
-    const newStatus = task.status;
-
-    // 2. Get all tasks in this column to determine neighbors
-    // Note: We trust `tasks` array order because handleDragOver updates it visually
-    const columnTasks = tasks.filter((t) => t.status === newStatus);
-    const indexInColumn = columnTasks.findIndex((t) => t.id === activeId);
-
-    // 3. Calculate new order
-    let newOrder = task.order;
-    const prevTask = columnTasks[indexInColumn - 1];
-    const nextTask = columnTasks[indexInColumn + 1];
-
-    if (!prevTask && !nextTask) {
-      // Only task in the column
-      newOrder = 1000;
-    } else if (!prevTask) {
-      // Moved to top
-      newOrder = nextTask.order / 2;
-    } else if (!nextTask) {
-      // Moved to bottom
-      newOrder = prevTask.order + 1000;
-    } else {
-      // Moved between two tasks
-      newOrder = (prevTask.order + nextTask.order) / 2;
-    }
-
-    // 4. Update local state with new order to prevent jump
-    setTasks((prev) =>
-      prev.map((t) => (t.id === activeId ? { ...t, order: newOrder } : t))
-    );
-
-    // 5. Persist to backend
-    updateTask(
-      {
-        taskId: activeId,
-        projectId,
-        data: { status: newStatus, order: newOrder },
-      },
-      {
-        onError: () => {
-          toast.error("Failed to save task order");
-          // Revert logic could go here, or just let React Query refetch fix it
-        },
-      }
-    );
-
-    setActiveId(null);
-  };
-
-  const openCreateDialog = (columnId: string) => {
-    setActiveColId(columnId);
-    setIsDialogOpen(true);
-  };
-
-  const handleCreateTask = async (title: string) => {
-    await createTask({
-      projectId,
-      title,
-      status: activeColId,
-    });
-    toast.success("Task created");
-  };
-
-  return (
-    <DndContext
-      sensors={sensors}
-      collisionDetection={closestCorners}
-      onDragStart={handleDragStart}
-      onDragOver={handleDragOver}
-      onDragEnd={handleDragEnd}
-    >
-      <div className="grid h-full grid-cols-1 md:grid-cols-3 gap-4">
-        {COLUMNS.map((col) => (
-          <KanbanColumn
-            key={col.id}
-            id={col.id}
-            title={col.title}
-            tasks={tasks.filter((t) => t.status === col.id)}
-            onTaskClick={onTaskClick}
-            onAddClick={() => openCreateDialog(col.id)}
-          />
-        ))}
-      </div>
-
-      <DragOverlay>
-        {activeId ? (
-          <TaskCard
-            task={tasks.find((t) => t.id === activeId)!}
-            onClick={() => {}}
-            isOverlay
-          />
-        ) : null}
-      </DragOverlay>
-
-      <CreateTaskDialog
-        open={isDialogOpen}
-        onOpenChange={setIsDialogOpen}
-        status={activeColId}
-        onCreate={handleCreateTask}
-      />
-    </DndContext>
-  );
-}
-
-function KanbanColumn({
-  id,
-  title,
-  tasks,
-  onTaskClick,
-  onAddClick,
-}: {
-  id: string;
-  title: string;
-  tasks: Task[];
-  onTaskClick: (task: Task) => void;
-  onAddClick: () => void;
-}) {
-  const { setNodeRef } = useSortable({
-    id: id,
-    data: {
-      type: "Column",
-    },
-  });
-
-  return (
-    <div
-      ref={setNodeRef}
-      className="flex h-full flex-col rounded-xl bg-muted/50 p-4 border border-border/50"
-    >
-      <div className="mb-4 flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <h3 className="font-semibold text-sm">{title}</h3>
-          <Badge variant="secondary" className="px-1.5 py-0 text-[10px]">
-            {tasks.length}
-          </Badge>
-        </div>
-        <Button
-          variant="ghost"
-          size="icon-xs"
-          className="h-6 w-6"
-          onClick={onAddClick}
-        >
-          <Plus className="h-3.5 w-3.5" />
-        </Button>
-      </div>
-
-      <div className="flex flex-1 flex-col gap-2 min-h-[100px]">
-        <SortableContext
-          items={tasks.map((t) => t.id)}
-          strategy={verticalListSortingStrategy}
-        >
-          {tasks.map((task) => (
-            <TaskCard key={task.id} task={task} onClick={onTaskClick} />
-          ))}
-        </SortableContext>
-      </div>
-    </div>
-  );
-}
-
-function TaskCard({
-  task,
-  onClick,
-  isOverlay,
-}: {
-  task: Task;
-  onClick: (task: Task) => void;
-  isOverlay?: boolean;
-}) {
-  const {
-    setNodeRef,
-    attributes,
-    listeners,
-    transform,
-    transition,
-    isDragging,
-  } = useSortable({
-    id: task.id,
-    data: {
-      type: "Task",
-      task,
-    },
-  });
-
-  const style = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-  };
-
-  if (isDragging) {
-    return (
-      <div
-        ref={setNodeRef}
-        style={style}
-        className="h-[60px] rounded-md border-2 border-primary/20 bg-muted/50 opacity-50"
-      />
-    );
-  }
-
-  return (
-    <div
-      ref={setNodeRef}
-      style={style}
-      {...attributes}
-      {...listeners}
-      onClick={() => onClick(task)}
-      className={cn(
-        "bg-card hover:border-primary/50 cursor-grab active:cursor-grabbing rounded-md border p-2.5 shadow-sm transition-all relative group touch-none",
-        isOverlay ? "rotate-2 shadow-xl cursor-grabbing scale-105 z-50" : ""
-      )}
-    >
-      <div className="font-medium text-sm leading-tight text-foreground/90">
-        {task.title}
-      </div>
-      {task.description && (
-        <p className="text-[10px] text-muted-foreground mt-1.5 line-clamp-2 leading-relaxed">
-          {task.description}
-        </p>
-      )}
-    </div>
-  );
-}
-</file>
-
 <file path="apps/web/src/components/app-sidebar.tsx">
 "use client";
 
@@ -6004,7 +5479,7 @@ export function AppSidebar() {
                   >
                     <Avatar className="h-8 w-8 rounded-lg">
                       <AvatarImage
-                        src={session?.user?.image || ""}
+                        src={session?.user?.image || undefined}
                         alt={session?.user?.name || ""}
                       />
                       <AvatarFallback className="rounded-lg">
@@ -6043,6 +5518,152 @@ export function AppSidebar() {
 }
 </file>
 
+<file path="apps/api/prisma/schema.prisma">
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model User {
+  id            String   @id
+  name          String
+  email         String
+  emailVerified Boolean
+  image         String?
+  createdAt     DateTime
+  updatedAt     DateTime
+
+  sessions Session[]
+  accounts Account[]
+
+  members       Member[]
+  assignedTasks Task[]
+
+  @@unique([email])
+  @@map("user")
+}
+
+model Session {
+  id        String   @id
+  userId    String
+  token     String
+  expiresAt DateTime
+  ipAddress String?
+  userAgent String?
+  createdAt DateTime
+  updatedAt DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([token])
+  @@map("session")
+}
+
+model Account {
+  id                    String    @id
+  userId                String
+  accountId             String
+  providerId            String
+  accessToken           String?
+  refreshToken          String?
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                 String?
+  password              String?
+  createdAt             DateTime
+  updatedAt             DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("account")
+}
+
+model Verification {
+  id         String    @id
+  identifier String
+  value      String
+  expiresAt  DateTime
+  createdAt  DateTime?
+  updatedAt  DateTime?
+
+  @@map("verification")
+}
+
+model Project {
+  id          String  @id @default(cuid())
+  title       String
+  description String?
+
+  githubRepoId   String?
+  githubRepoName String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  members Member[]
+  tasks   Task[]
+
+  @@map("project")
+}
+
+model Member {
+  id        String   @id @default(cuid())
+  userId    String
+  projectId String
+  role      String   @default("MEMBER")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, projectId])
+  @@map("member")
+}
+
+enum Priority {
+  low
+  medium
+  high
+}
+
+enum PrStatus {
+  open
+  merged
+  closed
+}
+
+model Task {
+  id          String  @id @default(cuid())
+  title       String
+  description String?
+  status      String  @default("todo")
+  order       Float   @default(0)
+
+  priority Priority @default(medium)
+  tags     String[]
+
+  githubBranch   String?
+  githubPrId     Int?
+  githubPrStatus PrStatus?
+
+  projectId String
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  assignedToUserId String?
+  assignedTo       User?   @relation(fields: [assignedToUserId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("task")
+}
+</file>
+
 <file path="apps/api/src/modules/auth/auth.ts">
 import { betterAuth } from "better-auth";
 import { prismaAdapter } from "better-auth/adapters/prisma";
@@ -6062,132 +5683,6 @@ export const auth = betterAuth({
   baseURL: "http://localhost:3000/api/auth",
   trustedOrigins: ["http://localhost:3000"],
 });
-</file>
-
-<file path="apps/api/src/modules/projects/projects.controller.ts">
-import { Elysia, t } from "elysia";
-import { auth } from "../auth/auth";
-import { ProjectsService } from "./projects.service";
-
-export const projectsController = new Elysia({ prefix: "/api/projects" })
-  .get("/", async ({ request, set }) => {
-    const session = await auth.api.getSession({
-      headers: request.headers,
-    });
-
-    if (!session) {
-      set.status = 401;
-      return "Unauthorized";
-    }
-    return ProjectsService.getMyProjects(session.user.id);
-  })
-  .get("/:id", async ({ request, params, set }) => {
-    const session = await auth.api.getSession({
-      headers: request.headers,
-    });
-
-    if (!session) {
-      set.status = 401;
-      return "Unauthorized";
-    }
-
-    try {
-      return await ProjectsService.getProject(session.user.id, params.id);
-    } catch (e: any) {
-      if (e.message === "Project not found") {
-        set.status = 404;
-        return e.message;
-      }
-      throw e;
-    }
-  })
-  .post("/", async ({ request, body, set }) => {
-    const session = await auth.api.getSession({
-      headers: request.headers,
-    });
-
-    if (!session) {
-      set.status = 401;
-      return "Unauthorized";
-    }
-
-    const { title, description, githubRepoId, githubRepoName } = body as {
-      title: string;
-      description?: string;
-      githubRepoId: string;
-      githubRepoName: string;
-    };
-
-    if (!title) {
-      set.status = 400;
-      return "Title is required";
-    }
-
-    if (!githubRepoId || !githubRepoName) {
-      set.status = 400;
-      return "Github Repository is required";
-    }
-
-    try {
-      return await ProjectsService.createProject(session.user.id, {
-        title,
-        description,
-        githubRepoId,
-        githubRepoName,
-      });
-    } catch (e: any) {
-      // TODO: bad practice but let's keep it for now :(
-      if (e.message === "Project already exists for this repository") {
-        set.status = 409;
-        return e.message;
-      }
-      throw e;
-    }
-  })
-  .post("/:id/tasks", async ({ request, params, body, set }) => {
-    const session = await auth.api.getSession({ headers: request.headers });
-    if (!session) {
-      set.status = 401;
-      return "Unauthorized";
-    }
-
-    const { title, status } = body as { title: string; status: string };
-
-    if (!title) {
-      set.status = 400;
-      return "Title is required";
-    }
-
-    return ProjectsService.createTask(session.user.id, params.id, {
-      title,
-      status: status || "todo",
-    });
-  })
-  .patch("/tasks/:taskId", async ({ request, params, body, set }) => {
-    const session = await auth.api.getSession({ headers: request.headers });
-    if (!session) {
-      set.status = 401;
-      return "Unauthorized";
-    }
-
-    const updateData = body as {
-      status?: string;
-      order?: number;
-      title?: string;
-      description?: string;
-      priority?: "low" | "medium" | "high";
-      tags?: string[];
-      githubBranch?: string | null;
-      githubPrId?: number | null;
-      githubPrStatus?: "open" | "merged" | "closed" | null;
-    };
-
-    return ProjectsService.updateTask(
-      session.user.id,
-      params.taskId,
-      updateData
-    );
-  });
 </file>
 
 <file path="apps/web/src/app/dashboard/_components/create-project-dialog.tsx">
@@ -6568,6 +6063,390 @@ export function ProjectCard({
 }
 </file>
 
+<file path="apps/web/src/app/dashboard/[projectId]/_components/kanban-board.tsx">
+"use client";
+
+import { useState, useEffect } from "react";
+import {
+  DndContext,
+  DragOverlay,
+  closestCorners,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  DragStartEvent,
+  DragOverEvent,
+  DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  verticalListSortingStrategy,
+  useSortable,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Plus } from "lucide-react";
+import { cn } from "@/lib/utils";
+import type { Task } from "../../_hooks/use-project";
+import { useCreateTask, useUpdateTask } from "../../_hooks/use-project";
+import { CreateTaskDialog } from "./create-task-dialog";
+import { toast } from "sonner";
+
+interface KanbanBoardProps {
+  projectId: string;
+  tasks: Task[];
+  onTaskClick: (task: Task) => void;
+}
+
+type ColumnType = "todo" | "in-progress" | "done";
+
+const COLUMNS: { id: ColumnType; title: string }[] = [
+  { id: "todo", title: "To Do" },
+  { id: "in-progress", title: "In Progress" },
+  { id: "done", title: "Done" },
+];
+
+export function KanbanBoard({
+  projectId,
+  tasks: initialTasks,
+  onTaskClick,
+}: KanbanBoardProps) {
+  // Sort tasks by order initially to ensure they align with backend
+  const [tasks, setTasks] = useState<Task[]>(
+    [...initialTasks].sort((a, b) => a.order - b.order)
+  );
+  const [activeId, setActiveId] = useState<string | null>(null);
+
+  // Dialog state
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [activeColId, setActiveColId] = useState<string>("todo");
+
+  // Mutations
+  const { mutateAsync: createTask } = useCreateTask();
+  const { mutate: updateTask } = useUpdateTask();
+
+  useEffect(() => {
+    // When props update (e.g. after refetch), sync state
+    setTasks([...initialTasks].sort((a, b) => a.order - b.order));
+  }, [initialTasks]);
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 8,
+      },
+    }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
+
+  const handleDragStart = (event: DragStartEvent) => {
+    setActiveId(event.active.id as string);
+  };
+
+  const handleDragOver = (event: DragOverEvent) => {
+    const { active, over } = event;
+    if (!over) return;
+
+    const activeId = active.id;
+    const overId = over.id;
+
+    if (activeId === overId) return;
+
+    const isActiveTask = active.data.current?.type === "Task";
+    const isOverTask = over.data.current?.type === "Task";
+    const isOverColumn = over.data.current?.type === "Column";
+
+    if (!isActiveTask) return;
+
+    // Scenario 1: Dragging a task over another task
+    if (isActiveTask && isOverTask) {
+      setTasks((tasks) => {
+        const activeIndex = tasks.findIndex((t) => t.id === activeId);
+        const overIndex = tasks.findIndex((t) => t.id === overId);
+
+        if (tasks[activeIndex].status !== tasks[overIndex].status) {
+          const newTasks = [...tasks];
+          newTasks[activeIndex] = {
+            ...newTasks[activeIndex],
+            status: tasks[overIndex].status,
+          };
+
+          if (activeIndex < overIndex) {
+            return arrayMove(newTasks, activeIndex, overIndex - 1);
+          }
+
+          return arrayMove(newTasks, activeIndex, overIndex);
+        }
+
+        return arrayMove(tasks, activeIndex, overIndex);
+      });
+    }
+
+    // Scenario 2: Dragging a task over a column (empty or not)
+    if (isActiveTask && isOverColumn) {
+      setTasks((tasks) => {
+        const activeIndex = tasks.findIndex((t) => t.id === activeId);
+        const newTasks = [...tasks];
+
+        if (newTasks[activeIndex].status !== overId) {
+          newTasks[activeIndex] = {
+            ...newTasks[activeIndex],
+            status: overId as string,
+          };
+          return arrayMove(newTasks, activeIndex, activeIndex);
+        }
+        return newTasks;
+      });
+    }
+  };
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    const activeId = active.id as string;
+    const overId = over ? (over.id as string) : null;
+
+    if (!overId) {
+      setActiveId(null);
+      return;
+    }
+
+    const task = tasks.find((t) => t.id === activeId);
+    if (!task) {
+      setActiveId(null);
+      return;
+    }
+
+    // 1. Identify the new status from the local state (updated by handleDragOver)
+    const newStatus = task.status;
+
+    // 2. Get all tasks in this column to determine neighbors
+    // Note: We trust `tasks` array order because handleDragOver updates it visually
+    const columnTasks = tasks.filter((t) => t.status === newStatus);
+    const indexInColumn = columnTasks.findIndex((t) => t.id === activeId);
+
+    // 3. Calculate new order
+    let newOrder = task.order;
+    const prevTask = columnTasks[indexInColumn - 1];
+    const nextTask = columnTasks[indexInColumn + 1];
+
+    if (!prevTask && !nextTask) {
+      // Only task in the column
+      newOrder = 1000;
+    } else if (!prevTask) {
+      // Moved to top
+      newOrder = nextTask.order / 2;
+    } else if (!nextTask) {
+      // Moved to bottom
+      newOrder = prevTask.order + 1000;
+    } else {
+      // Moved between two tasks
+      newOrder = (prevTask.order + nextTask.order) / 2;
+    }
+
+    // 4. Update local state with new order to prevent jump
+    setTasks((prev) =>
+      prev.map((t) => (t.id === activeId ? { ...t, order: newOrder } : t))
+    );
+
+    // 5. Persist to backend
+    updateTask(
+      {
+        taskId: activeId,
+        projectId,
+        data: { status: newStatus, order: newOrder },
+      },
+      {
+        onError: () => {
+          toast.error("Failed to save task order");
+          // Revert logic could go here, or just let React Query refetch fix it
+        },
+      }
+    );
+
+    setActiveId(null);
+  };
+
+  const openCreateDialog = (columnId: string) => {
+    setActiveColId(columnId);
+    setIsDialogOpen(true);
+  };
+
+  const handleCreateTask = async (title: string) => {
+    await createTask({
+      projectId,
+      title,
+      status: activeColId,
+    });
+    toast.success("Task created");
+  };
+
+  return (
+    <DndContext
+      sensors={sensors}
+      collisionDetection={closestCorners}
+      onDragStart={handleDragStart}
+      onDragOver={handleDragOver}
+      onDragEnd={handleDragEnd}
+    >
+      <div className="grid h-full grid-cols-1 md:grid-cols-3 gap-4">
+        {COLUMNS.map((col) => (
+          <KanbanColumn
+            key={col.id}
+            id={col.id}
+            title={col.title}
+            tasks={tasks.filter((t) => t.status === col.id)}
+            onTaskClick={onTaskClick}
+            onAddClick={() => openCreateDialog(col.id)}
+          />
+        ))}
+      </div>
+
+      <DragOverlay>
+        {activeId ? (
+          <TaskCard
+            task={tasks.find((t) => t.id === activeId)!}
+            onClick={() => {}}
+            isOverlay
+          />
+        ) : null}
+      </DragOverlay>
+
+      <CreateTaskDialog
+        open={isDialogOpen}
+        onOpenChange={setIsDialogOpen}
+        status={activeColId}
+        onCreate={handleCreateTask}
+      />
+    </DndContext>
+  );
+}
+
+function KanbanColumn({
+  id,
+  title,
+  tasks,
+  onTaskClick,
+  onAddClick,
+}: {
+  id: string;
+  title: string;
+  tasks: Task[];
+  onTaskClick: (task: Task) => void;
+  onAddClick: () => void;
+}) {
+  const { setNodeRef } = useSortable({
+    id: id,
+    data: {
+      type: "Column",
+    },
+  });
+
+  return (
+    <div
+      ref={setNodeRef}
+      className="flex h-full flex-col rounded-xl bg-muted/50 p-4 border border-border/50"
+    >
+      <div className="mb-4 flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <h3 className="font-semibold text-sm">{title}</h3>
+          <Badge variant="secondary" className="px-1.5 py-0 text-[10px]">
+            {tasks.length}
+          </Badge>
+        </div>
+        <Button
+          variant="ghost"
+          size="icon-xs"
+          className="h-6 w-6"
+          onClick={onAddClick}
+        >
+          <Plus className="h-3.5 w-3.5" />
+        </Button>
+      </div>
+
+      <div className="flex flex-1 flex-col gap-2 min-h-[100px]">
+        <SortableContext
+          items={tasks.map((t) => t.id)}
+          strategy={verticalListSortingStrategy}
+        >
+          {tasks.map((task) => (
+            <TaskCard key={task.id} task={task} onClick={onTaskClick} />
+          ))}
+        </SortableContext>
+      </div>
+    </div>
+  );
+}
+
+function TaskCard({
+  task,
+  onClick,
+  isOverlay,
+}: {
+  task: Task;
+  onClick: (task: Task) => void;
+  isOverlay?: boolean;
+}) {
+  const {
+    setNodeRef,
+    attributes,
+    listeners,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({
+    id: task.id,
+    data: {
+      type: "Task",
+      task,
+    },
+  });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+  };
+
+  if (isDragging) {
+    return (
+      <div
+        ref={setNodeRef}
+        style={style}
+        className="h-[60px] rounded-md border-2 border-primary/20 bg-muted/50 opacity-50"
+      />
+    );
+  }
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      {...attributes}
+      {...listeners}
+      onClick={() => onClick(task)}
+      className={cn(
+        "bg-card hover:border-primary/50 cursor-grab active:cursor-grabbing rounded-md border p-2.5 shadow-sm transition-all relative group touch-none",
+        isOverlay ? "rotate-2 shadow-xl cursor-grabbing scale-105 z-50" : ""
+      )}
+    >
+      <div className="font-medium text-sm leading-tight text-foreground/90">
+        {task.title}
+      </div>
+      {task.description && (
+        <p className="text-[10px] text-muted-foreground mt-1.5 line-clamp-2 leading-relaxed">
+          {task.description}
+        </p>
+      )}
+    </div>
+  );
+}
+</file>
+
 <file path="apps/web/src/app/dashboard/[projectId]/page.tsx">
 "use client";
 
@@ -6879,6 +6758,132 @@ export default function RootLayout({
     </html>
   );
 }
+</file>
+
+<file path="apps/api/src/modules/projects/projects.controller.ts">
+import { Elysia, t } from "elysia";
+import { auth } from "../auth/auth";
+import { ProjectsService } from "./projects.service";
+
+export const projectsController = new Elysia({ prefix: "/api/projects" })
+  .get("/", async ({ request, set }) => {
+    const session = await auth.api.getSession({
+      headers: request.headers,
+    });
+
+    if (!session) {
+      set.status = 401;
+      return "Unauthorized";
+    }
+    return ProjectsService.getMyProjects(session.user.id);
+  })
+  .get("/:id", async ({ request, params, set }) => {
+    const session = await auth.api.getSession({
+      headers: request.headers,
+    });
+
+    if (!session) {
+      set.status = 401;
+      return "Unauthorized";
+    }
+
+    try {
+      return await ProjectsService.getProject(session.user.id, params.id);
+    } catch (e: any) {
+      if (e.message === "Project not found") {
+        set.status = 404;
+        return e.message;
+      }
+      throw e;
+    }
+  })
+  .post("/", async ({ request, body, set }) => {
+    const session = await auth.api.getSession({
+      headers: request.headers,
+    });
+
+    if (!session) {
+      set.status = 401;
+      return "Unauthorized";
+    }
+
+    const { title, description, githubRepoId, githubRepoName } = body as {
+      title: string;
+      description?: string;
+      githubRepoId: string;
+      githubRepoName: string;
+    };
+
+    if (!title) {
+      set.status = 400;
+      return "Title is required";
+    }
+
+    if (!githubRepoId || !githubRepoName) {
+      set.status = 400;
+      return "Github Repository is required";
+    }
+
+    try {
+      return await ProjectsService.createProject(session.user.id, {
+        title,
+        description,
+        githubRepoId,
+        githubRepoName,
+      });
+    } catch (e: any) {
+      // TODO: bad practice but let's keep it for now :(
+      if (e.message === "Project already exists for this repository") {
+        set.status = 409;
+        return e.message;
+      }
+      throw e;
+    }
+  })
+  .post("/:id/tasks", async ({ request, params, body, set }) => {
+    const session = await auth.api.getSession({ headers: request.headers });
+    if (!session) {
+      set.status = 401;
+      return "Unauthorized";
+    }
+
+    const { title, status } = body as { title: string; status: string };
+
+    if (!title) {
+      set.status = 400;
+      return "Title is required";
+    }
+
+    return ProjectsService.createTask(session.user.id, params.id, {
+      title,
+      status: status || "todo",
+    });
+  })
+  .patch("/tasks/:taskId", async ({ request, params, body, set }) => {
+    const session = await auth.api.getSession({ headers: request.headers });
+    if (!session) {
+      set.status = 401;
+      return "Unauthorized";
+    }
+
+    const updateData = body as {
+      status?: string;
+      order?: number;
+      title?: string;
+      description?: string;
+      priority?: "low" | "medium" | "high";
+      tags?: string[];
+      githubBranch?: string | null;
+      githubPrId?: number | null;
+      githubPrStatus?: "open" | "merged" | "closed" | null;
+    };
+
+    return ProjectsService.updateTask(
+      session.user.id,
+      params.taskId,
+      updateData
+    );
+  });
 </file>
 
 <file path="apps/web/src/app/dashboard/_hooks/use-project.ts">

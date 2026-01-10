@@ -97,7 +97,7 @@ export function AppSidebar() {
                   >
                     <Avatar className="h-8 w-8 rounded-lg">
                       <AvatarImage
-                        src={session?.user?.image || ""}
+                        src={session?.user?.image || undefined}
                         alt={session?.user?.name || ""}
                       />
                       <AvatarFallback className="rounded-lg">

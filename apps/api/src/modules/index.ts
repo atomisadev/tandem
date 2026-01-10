@@ -3,9 +3,11 @@ import { statusController } from "./status/status.controller";
 import { authController } from "./auth/auth.controller";
 import { projectsController } from "./projects/projects.controller";
 import { githubController } from "./github/github.controller";
+import { waitlistController } from "./waitlist/waitlist.controller";
 
 export const modules = new Elysia()
   .use(statusController)
   .use(authController)
   .use(projectsController)
-  .use(githubController);
+  .use(githubController)
+  .use(waitlistController);
