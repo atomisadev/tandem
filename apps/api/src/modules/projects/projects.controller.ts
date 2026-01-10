@@ -34,49 +34,44 @@ export const projectsController = new Elysia({ prefix: "/api/projects" })
       throw e;
     }
   })
-  .post("/", async ({ request, body, set }) => {
-    const session = await auth.api.getSession({
-      headers: request.headers,
-    });
-
-    if (!session) {
-      set.status = 401;
-      return "Unauthorized";
-    }
-
-    const { title, description, githubRepoId, githubRepoName } = body as {
-      title: string;
-      description?: string;
-      githubRepoId: string;
-      githubRepoName: string;
-    };
-
-    if (!title) {
-      set.status = 400;
-      return "Title is required";
-    }
-
-    if (!githubRepoId || !githubRepoName) {
-      set.status = 400;
-      return "Github Repository is required";
-    }
-
-    try {
-      return await ProjectsService.createProject(session.user.id, {
-        title,
-        description,
-        githubRepoId,
-        githubRepoName,
+  .post(
+    "/",
+    async ({ request, body, set }) => {
+      const session = await auth.api.getSession({
+        headers: request.headers,
       });
-    } catch (e: any) {
-      // TODO: bad practice but let's keep it for now :(
-      if (e.message === "Project already exists for this repository") {
-        set.status = 409;
-        return e.message;
+
+      if (!session) {
+        set.status = 401;
+        return "Unauthorized";
       }
-      throw e;
+
+      const { title, description, githubRepoId, githubRepoName } = body;
+
+      try {
+        return await ProjectsService.createProject(session.user.id, {
+          title,
+          description,
+          githubRepoId,
+          githubRepoName,
+        });
+      } catch (e: any) {
+        if (e.message === "Project already exists for this repository") {
+          set.status = 409;
+          return e.message;
+        }
+        throw e;
+      }
+    },
+    {
+      body: t.Object({
+        title: t.String(),
+        description: t.Optional(t.String()),
+        githubRepoId: t.String(),
+        githubRepoName: t.String(),
+      }),
     }
-  })
+  )
   .post("/:id/tasks", async ({ request, params, body, set }) => {
     const session = await auth.api.getSession({ headers: request.headers });
     if (!session) {
