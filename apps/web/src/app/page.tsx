@@ -24,6 +24,7 @@ import {
 } from "@tabler/icons-react";
 import { RequestAccessDialog } from "@/components/request-access-dialog";
 import { cn } from "@/lib/utils";
+import { Logo } from "@/components/logo";
 
 function useScroll(threshold = 50) {
   const [scrolled, setScrolled] = useState(false);
@@ -105,17 +106,17 @@ export default function LandingPage() {
           )}
         >
           <div className="flex items-center gap-2 font-medium">
-            <div className="flex size-9 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-primary/60 text-white shadow-lg shadow-primary/20 ring-1 ring-white/10">
-              <IconCommand className="size-5" />
-            </div>
-            <span className="font-bold tracking-tight text-xl">Tandem</span>
+            <Logo className="h-8 w-auto text-foreground" />
           </div>
-          <nav className="flex items-center gap-6">
-            <Link
-              href="/sign-in"
-              className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors h-10 px-4 rounded-full"
-            >
-              Login
+          <nav className="flex items-center gap-2">
+            <Link href="/sign-in">
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-10 px-4 rounded-full text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-white/5 transition-all"
+              >
+                Login
+              </Button>
             </Link>
             <RequestAccessDialog>
               <Button
@@ -152,7 +153,10 @@ export default function LandingPage() {
                     <IconArrowRight className="ml-2 size-5" />
                   </Button>
                 </RequestAccessDialog>
-                <Link href="https://github.com/tandem" target="_blank">
+                <Link
+                  href="https://github.com/atomisadev/tandem"
+                  target="_blank"
+                >
                   <Button
                     variant="outline"
                     size="lg"
@@ -443,15 +447,10 @@ export default function LandingPage() {
         <div className="container mx-auto max-w-6xl px-4">
           <div className="flex flex-col items-center justify-between gap-6 sm:flex-row">
             <div className="flex items-center gap-2 font-medium">
-              <div className="flex size-7 items-center justify-center rounded-lg bg-white/5 border border-white/10 text-white/80">
-                <IconCommand className="size-4" />
-              </div>
-              <span className="text-muted-foreground font-semibold">
-                Tandem
-              </span>
+              <Logo className="h-6 w-auto text-muted-foreground" />
             </div>
             <p className="text-sm text-muted-foreground">
-              © {new Date().getFullYear()} Tandem Inc. Built for shippers.
+              © {new Date().getFullYear()} Tandem. Built for shippers.
             </p>
             <div className="flex gap-8">
               <Link
