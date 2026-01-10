@@ -129,6 +129,11 @@ export class ProjectsService {
       order?: number;
       title?: string;
       description?: string;
+      priority?: "low" | "medium" | "high";
+      tags?: string[];
+      githubBranch?: string | null;
+      githubPrId?: number | null;
+      githubPrStatus?: "open" | "merged" | "closed" | null;
     }
   ) {
     const task = await prisma.task.findUnique({

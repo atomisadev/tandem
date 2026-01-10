@@ -1,3 +1,5 @@
+"use client";
+
 import { useState, useEffect } from "react";
 import {
   DndContext,
@@ -47,17 +49,23 @@ export function KanbanBoard({
   tasks: initialTasks,
   onTaskClick,
 }: KanbanBoardProps) {
-  const [tasks, setTasks] = useState<Task[]>(initialTasks);
+  // Sort tasks by order initially to ensure they align with backend
+  const [tasks, setTasks] = useState<Task[]>(
+    [...initialTasks].sort((a, b) => a.order - b.order)
+  );
   const [activeId, setActiveId] = useState<string | null>(null);
 
+  // Dialog state
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [activeColId, setActiveColId] = useState<string>("todo");
 
+  // Mutations
   const { mutateAsync: createTask } = useCreateTask();
   const { mutate: updateTask } = useUpdateTask();
 
   useEffect(() => {
-    setTasks(initialTasks);
+    // When props update (e.g. after refetch), sync state
+    setTasks([...initialTasks].sort((a, b) => a.order - b.order));
   }, [initialTasks]);
 
   const sensors = useSensors(
@@ -90,6 +98,7 @@ export function KanbanBoard({
 
     if (!isActiveTask) return;
 
+    // Scenario 1: Dragging a task over another task
     if (isActiveTask && isOverTask) {
       setTasks((tasks) => {
         const activeIndex = tasks.findIndex((t) => t.id === activeId);
@@ -101,6 +110,11 @@ export function KanbanBoard({
             ...newTasks[activeIndex],
             status: tasks[overIndex].status,
           };
+
+          if (activeIndex < overIndex) {
+            return arrayMove(newTasks, activeIndex, overIndex - 1);
+          }
+
           return arrayMove(newTasks, activeIndex, overIndex);
         }
 
@@ -108,6 +122,7 @@ export function KanbanBoard({
       });
     }
 
+    // Scenario 2: Dragging a task over a column (empty or not)
     if (isActiveTask && isOverColumn) {
       setTasks((tasks) => {
         const activeIndex = tasks.findIndex((t) => t.id === activeId);
@@ -127,24 +142,66 @@ export function KanbanBoard({
 
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
-    const taskId = active.id as string;
+    const activeId = active.id as string;
+    const overId = over ? (over.id as string) : null;
 
-    const task = tasks.find((t) => t.id === taskId);
-
-    if (task && over) {
-      updateTask(
-        {
-          taskId,
-          projectId,
-          data: { status: task.status },
-        },
-        {
-          onError: () => {
-            toast.error("Failed to move task");
-          },
-        }
-      );
+    if (!overId) {
+      setActiveId(null);
+      return;
     }
+
+    const task = tasks.find((t) => t.id === activeId);
+    if (!task) {
+      setActiveId(null);
+      return;
+    }
+
+    // 1. Identify the new status from the local state (updated by handleDragOver)
+    const newStatus = task.status;
+
+    // 2. Get all tasks in this column to determine neighbors
+    // Note: We trust `tasks` array order because handleDragOver updates it visually
+    const columnTasks = tasks.filter((t) => t.status === newStatus);
+    const indexInColumn = columnTasks.findIndex((t) => t.id === activeId);
+
+    // 3. Calculate new order
+    let newOrder = task.order;
+    const prevTask = columnTasks[indexInColumn - 1];
+    const nextTask = columnTasks[indexInColumn + 1];
+
+    if (!prevTask && !nextTask) {
+      // Only task in the column
+      newOrder = 1000;
+    } else if (!prevTask) {
+      // Moved to top
+      newOrder = nextTask.order / 2;
+    } else if (!nextTask) {
+      // Moved to bottom
+      newOrder = prevTask.order + 1000;
+    } else {
+      // Moved between two tasks
+      newOrder = (prevTask.order + nextTask.order) / 2;
+    }
+
+    // 4. Update local state with new order to prevent jump
+    setTasks((prev) =>
+      prev.map((t) => (t.id === activeId ? { ...t, order: newOrder } : t))
+    );
+
+    // 5. Persist to backend
+    updateTask(
+      {
+        taskId: activeId,
+        projectId,
+        data: { status: newStatus, order: newOrder },
+      },
+      {
+        onError: () => {
+          toast.error("Failed to save task order");
+          // Revert logic could go here, or just let React Query refetch fix it
+        },
+      }
+    );
 
     setActiveId(null);
   };
@@ -171,7 +228,7 @@ export function KanbanBoard({
       onDragOver={handleDragOver}
       onDragEnd={handleDragEnd}
     >
-      <div className="grid h-full grid-cols-1 md:grid-cols-3 gap-6">
+      <div className="grid h-full grid-cols-1 md:grid-cols-3 gap-4">
         {COLUMNS.map((col) => (
           <KanbanColumn
             key={col.id}
@@ -227,7 +284,7 @@ function KanbanColumn({
   return (
     <div
       ref={setNodeRef}
-      className="flex h-full flex-col rounded-xl bg-muted/20 border-2 border-dashed border-border/50 px-4 py-4"
+      className="flex h-full flex-col rounded-xl bg-muted/50 p-4 border border-border/50"
     >
       <div className="mb-4 flex items-center justify-between">
         <div className="flex items-center gap-2">
@@ -246,7 +303,7 @@ function KanbanColumn({
         </Button>
       </div>
 
-      <div className="flex flex-1 flex-col gap-3 overflow-y-auto min-h-0">
+      <div className="flex flex-1 flex-col gap-2 min-h-[100px]">
         <SortableContext
           items={tasks.map((t) => t.id)}
           strategy={verticalListSortingStrategy}
@@ -294,7 +351,7 @@ function TaskCard({
       <div
         ref={setNodeRef}
         style={style}
-        className="h-[60px] w-full rounded-md border border-dashed border-primary/40 bg-muted/50 opacity-50"
+        className="h-[60px] rounded-md border-2 border-primary/20 bg-muted/50 opacity-50"
       />
     );
   }
@@ -307,17 +364,15 @@ function TaskCard({
       {...listeners}
       onClick={() => onClick(task)}
       className={cn(
-        "flex flex-col gap-1.5 rounded-md border bg-card p-2.5 text-card-foreground shadow-sm transition-all hover:ring-2 hover:ring-primary/20 hover:border-primary/50 cursor-grab active:cursor-grabbing group select-none relative",
-        isOverlay
-          ? "rotate-2 scale-105 z-50 shadow-xl cursor-grabbing ring-2 ring-primary/20"
-          : ""
+        "bg-card hover:border-primary/50 cursor-grab active:cursor-grabbing rounded-md border p-2.5 shadow-sm transition-all relative group touch-none",
+        isOverlay ? "rotate-2 shadow-xl cursor-grabbing scale-105 z-50" : ""
       )}
     >
-      <div className="flex items-start justify-between gap-2">
-        <span className="font-medium text-sm leading-tight">{task.title}</span>
+      <div className="font-medium text-sm leading-tight text-foreground/90">
+        {task.title}
       </div>
       {task.description && (
-        <p className="text-[10px] text-muted-foreground line-clamp-2 leading-relaxed">
+        <p className="text-[10px] text-muted-foreground mt-1.5 line-clamp-2 leading-relaxed">
           {task.description}
         </p>
       )}

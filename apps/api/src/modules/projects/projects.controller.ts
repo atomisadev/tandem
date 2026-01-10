@@ -108,6 +108,11 @@ export const projectsController = new Elysia({ prefix: "/api/projects" })
       order?: number;
       title?: string;
       description?: string;
+      priority?: "low" | "medium" | "high";
+      tags?: string[];
+      githubBranch?: string | null;
+      githubPrId?: number | null;
+      githubPrStatus?: "open" | "merged" | "closed" | null;
     };
 
     return ProjectsService.updateTask(

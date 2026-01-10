@@ -104,6 +104,18 @@ model Member {
   @@map("member")
 }
 
+enum Priority {
+  low
+  medium
+  high
+}
+
+enum PrStatus {
+  open
+  merged
+  closed
+}
+
 model Task {
   id          String  @id @default(cuid())
   title       String
@@ -111,9 +123,12 @@ model Task {
   status      String  @default("todo")
   order       Float   @default(0)
 
-  branchName String?
-  prNumber   Int?
-  prStatus   String?
+  priority Priority @default(medium)
+  tags     String[]
+
+  githubBranch   String?
+  githubPrId     Int?
+  githubPrStatus PrStatus?
 
   projectId String
   project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
